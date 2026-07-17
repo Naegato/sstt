@@ -1,0 +1,21 @@
+# IDE
+.idea/
+.vscode/
+
+# Node / Bun
+node_modules/
+.turbo/
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Scratch / temp working files (jamais commités)
+scratchpad/
