@@ -6,22 +6,33 @@ export default async function HomePage() {
   const user = await getCurrentUser();
 
   return (
-    <main>
-      <h1>Personne n&apos;a testé ce truc ?!</h1>
-      <p>Party game de cartes chaotique et absurde.</p>
+    <main className="centered-page">
+      <div className="logo-sticker">
+        <span className="logo-sticker__mark">🃏</span>
+        Personne n&apos;a testé ce truc&nbsp;?!
+      </div>
+
+      <p className="home-tagline">Party game de cartes chaotique et absurde. Aucun équilibrage. Zéro pitié.</p>
 
       {user ? (
-        <p>
-          Connecté en tant que <strong>{user.displayName}</strong> ({user.email}) — <LogoutButton />
+        <p className="home-identity">
+          Connecté en tant que <strong>{user.displayName}</strong> ({user.email})
+          <LogoutButton />
         </p>
       ) : (
-        <p>
-          <Link href="/login">Se connecter</Link> ou <Link href="/register">créer un compte</Link> (optionnel, tu peux
-          aussi jouer en invité).
+        <p className="home-cta__secondary">
+          <Link href="/login">Se connecter</Link>
+          <span>·</span>
+          <Link href="/register">créer un compte</Link>
+          <span>(optionnel, tu peux aussi jouer en invité)</span>
         </p>
       )}
 
-      <Link href="/lobby">Rejoindre une partie</Link>
+      <div className="home-cta">
+        <Link href="/lobby" className="btn-sticker">
+          🎲 Rejoindre une partie
+        </Link>
+      </div>
     </main>
   );
 }

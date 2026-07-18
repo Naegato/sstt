@@ -20,6 +20,7 @@ type StealPlayedCardPayload = { roomId: string; playerId: string; targetPlayerId
 type PassHotPotatoPayload = { roomId: string; playerId: string };
 type ChallengeEliminationPayload = { roomId: string; challengerId: string; targetPlayerId: string; reason: string };
 type ConfirmManualActionPayload = { roomId: string; playerId: string; cardId: string };
+type ResetGamePayload = { roomId: string };
 
 export async function registerSocket(fastify: FastifyInstance): Promise<void> {
   const io = new SocketIOServer(fastify.server, {
@@ -131,6 +132,15 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
     socket.on(CLIENT_EVENTS.CONFIRM_MANUAL_ACTION, ({ roomId, playerId, cardId }: ConfirmManualActionPayload) => {
       try {
         const result = gameService.confirmManualAction(roomId, playerId, cardId);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.RESET_GAME, ({ roomId }: ResetGamePayload) => {
+      try {
+        const result = gameService.resetGame(roomId);
         broadcastResult(roomId, result);
       } catch (err) {
         emitError(socket, err);

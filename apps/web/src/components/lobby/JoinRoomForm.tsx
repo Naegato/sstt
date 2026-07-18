@@ -1,10 +1,12 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { usePlayerId } from "@/hooks/usePlayerId";
 import { useSocket } from "@/hooks/useSocket";
 import { useGameStore } from "@/stores/gameStore";
+import { type JoinRoomInput, joinRoomSchema } from "@/lib/schemas";
 
 export function JoinRoomForm() {
   const router = useRouter();
@@ -12,29 +14,35 @@ export function JoinRoomForm() {
   const { joinRoom } = useSocket();
   const setIdentity = useGameStore((s) => s.setIdentity);
 
-  const [roomId, setRoomId] = useState("");
-  const [playerName, setPlayerName] = useState("");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<JoinRoomInput>({
+    resolver: zodResolver(joinRoomSchema),
+    defaultValues: { roomId: "", playerName: "" },
+  });
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!playerId || !roomId.trim() || !playerName.trim()) return;
-
-    setIdentity(roomId.trim(), playerId, playerName.trim());
-    joinRoom(roomId.trim(), playerId, playerName.trim());
-    router.push(`/game/${encodeURIComponent(roomId.trim())}`);
+  const onSubmit = (data: JoinRoomInput) => {
+    if (!playerId) return;
+    setIdentity(data.roomId, playerId, data.playerName);
+    joinRoom(data.roomId, playerId, data.playerName);
+    router.push(`/game/${encodeURIComponent(data.roomId)}`);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="join-room-form">
-      <label>
-        Nom de la room
-        <input value={roomId} onChange={(e) => setRoomId(e.target.value)} placeholder="ex: soiree-jeux" required />
+    <form onSubmit={handleSubmit(onSubmit)} className="sticker-form">
+      <label className="sticker-form__field">
+        <span>Nom de la room</span>
+        <input className="input-sticker" placeholder="ex: soiree-jeux" {...register("roomId")} />
+        {errors.roomId && <span className="sticker-form__error">{errors.roomId.message}</span>}
       </label>
-      <label>
-        Ton nom
-        <input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="ex: Alice" required />
+      <label className="sticker-form__field">
+        <span>Ton nom</span>
+        <input className="input-sticker" placeholder="ex: Alice" {...register("playerName")} />
+        {errors.playerName && <span className="sticker-form__error">{errors.playerName.message}</span>}
       </label>
-      <button type="submit" disabled={!playerId}>
+      <button type="submit" className="btn-sticker" disabled={!playerId || isSubmitting}>
         Rejoindre
       </button>
     </form>

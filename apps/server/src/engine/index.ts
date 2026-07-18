@@ -12,6 +12,7 @@ import {
   eliminatePlayer,
   isDrawPileLocked,
   passHotPotato,
+  resetGameToLobby,
   startDenunciationVote,
   startGame,
   stealPlayedCard,
@@ -37,13 +38,16 @@ export function processEvent(state: GameState, event: GameEvent): EngineResult {
 }
 
 /**
- * Seule exception au court-circuit "partie terminée" : "Enfoiré !"
- * (REACT_TO_OTHER_PLAYER_VICTORY), jouable juste après qu'un joueur ait gagné.
- * L'éligibilité complète (un seul vainqueur, pas soi-même, pas éliminé) est
- * vérifiée dans playCard() — ici on vérifie juste que la carte a cet effet,
- * pour décider si l'event a le droit de continuer jusqu'à dispatch().
+ * Exceptions au court-circuit "partie terminée" : "Enfoiré !"
+ * (REACT_TO_OTHER_PLAYER_VICTORY), jouable juste après qu'un joueur ait gagné,
+ * et GAME_RESET ("Rejouer une partie"), qui n'a de sens QUE quand la partie
+ * est terminée. L'éligibilité complète d'Enfoiré ! (un seul vainqueur, pas
+ * soi-même, pas éliminé) est vérifiée dans playCard() — ici on vérifie juste
+ * que la carte a cet effet, pour décider si l'event a le droit de continuer
+ * jusqu'à dispatch().
  */
 function canReactAfterGameEnded(state: GameState, event: GameEvent): boolean {
+  if (event.type === "GAME_RESET") return true;
   if (event.type !== "CARD_PLAYED") return false;
   const player = state.players.find((p) => p.id === event.playerId);
   const card = player?.hand.find((c) => c.id === event.cardId);
@@ -110,6 +114,18 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
     }
     case "GAME_ENDED":
       return { state: { ...state, phase: "ended", winnerIds: event.winnerIds }, sideEffects: [] };
+    case "GAME_RESET": {
+      // Contrairement aux autres events, GAME_RESET n'a de sens QUE si la
+      // partie est réellement terminée côté serveur (le bouton "Rejouer" côté
+      // UI ne fait que suivre cet état, il ne le décide pas) — sinon un client
+      // pourrait réinitialiser une partie en cours.
+      if (state.phase !== "ended") {
+        throw new GameLogicError("Impossible de rejouer une partie qui n'est pas terminée", "GAME_NOT_ENDED", {
+          phase: state.phase,
+        });
+      }
+      return { state: resetGameToLobby(state), sideEffects: [{ type: "GAME_RESET" }] };
+    }
     default: {
       const exhaustiveCheck: never = event;
       throw new Error(`Event inconnu: ${JSON.stringify(exhaustiveCheck)}`);

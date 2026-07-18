@@ -14,12 +14,24 @@ export function GameBoard() {
   const playerId = useGameStore((s) => s.playerId);
   const roomId = useGameStore((s) => s.roomId);
   const errorMessage = useGameStore((s) => s.errorMessage);
-  const { startGame, playCard, endTurn, castVote, stealPlayedCard, passHotPotato, denouncePlayer, confirmManualAction } =
-    useSocket();
+  const {
+    startGame,
+    playCard,
+    endTurn,
+    castVote,
+    stealPlayedCard,
+    passHotPotato,
+    denouncePlayer,
+    confirmManualAction,
+    resetGame,
+  } = useSocket();
   const [denounceTargetId, setDenounceTargetId] = useState("");
   const [denounceReason, setDenounceReason] = useState("");
   const [confirmedCardId, setConfirmedCardId] = useState<string | null>(null);
-  const [zoomedCard, setZoomedCard] = useState<CardType | null>(null);
+  // Carte affichée en grand : soit en lecture seule (peek sur une carte posée,
+  // pas de confirmAction), soit avec confirmation (carte en main, sur le point
+  // d'être jouée — voir handleCardClick/confirmPreview).
+  const [cardModal, setCardModal] = useState<{ card: CardType; confirmAction?: () => void } | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
 
   if (!gameState || !roomId) {
@@ -85,19 +97,28 @@ export function GameBoard() {
     setSelectedCard(null);
   };
 
-  // Clic sur une carte en main : si elle n'a besoin d'aucune cible, jouée
-  // immédiatement ; sinon elle reste "sélectionnée" et les plateaux valides
-  // s'illuminent (voir TurnIndicator) en attendant un clic sur l'un d'eux.
-  const handleSelectCard = (card: CardType) => {
-    if (selectedCard?.id === card.id) {
-      setSelectedCard(null);
-      return;
-    }
+  // Après confirmation dans la modale d'aperçu : si la carte n'a besoin
+  // d'aucune cible, jouée immédiatement ; sinon elle reste "sélectionnée" et
+  // les plateaux valides s'illuminent (voir TurnIndicator) en attendant un
+  // clic sur l'un d'eux.
+  const confirmPreview = (card: CardType) => {
+    setCardModal(null);
     if (!cardNeedsTarget(card)) {
       submitPlayCard(card);
       return;
     }
     setSelectedCard(card);
+  };
+
+  // Clic sur une carte en main : l'affiche d'abord en grand pour confirmation
+  // (voir confirmPreview) — sauf reclic sur la carte déjà sélectionnée/en
+  // attente de cible, qui annule directement sans repasser par l'aperçu.
+  const handleCardClick = (card: CardType) => {
+    if (selectedCard?.id === card.id) {
+      setSelectedCard(null);
+      return;
+    }
+    setCardModal({ card, confirmAction: () => confirmPreview(card) });
   };
 
   const isTargeting = Boolean(selectedCard);
@@ -147,13 +168,18 @@ export function GameBoard() {
       )}
 
       {gameState.phase === "ended" && (
-        <p className="game-board__winner">
-          {gameState.winnerIds && gameState.winnerIds.length > 0
-            ? `Partie terminée — ${gameState.winnerIds.length > 1 ? "vainqueurs" : "vainqueur"} : ${gameState.winnerIds
-                .map((id) => gameState.players.find((p) => p.id === id)?.name ?? id)
-                .join(", ")}`
-            : "Partie terminée — aucun vainqueur."}
-        </p>
+        <div className="game-board__end">
+          <p className="game-board__winner">
+            {gameState.winnerIds && gameState.winnerIds.length > 0
+              ? `Partie terminée — ${gameState.winnerIds.length > 1 ? "vainqueurs" : "vainqueur"} : ${gameState.winnerIds
+                  .map((id) => gameState.players.find((p) => p.id === id)?.name ?? id)
+                  .join(", ")}`
+              : "Partie terminée — aucun vainqueur."}
+          </p>
+          <button type="button" className="btn-sticker" onClick={() => resetGame(roomId)}>
+            🔁 Rejouer une partie
+          </button>
+        </div>
       )}
 
       <div className="table">
@@ -164,7 +190,7 @@ export function GameBoard() {
             selfPlayerId={playerId}
             stealableFromPlayerIds={stealableFromPlayerIds}
             onSteal={(targetPlayerId, cardId) => self && stealPlayedCard(roomId, self.id, targetPlayerId, cardId)}
-            onZoomCard={setZoomedCard}
+            onZoomCard={(card) => setCardModal({ card })}
             targetablePlayerIds={targetablePlayerIds}
             onSelectTarget={(targetPlayerId) => selectedCard && submitPlayCard(selectedCard, targetPlayerId)}
           />
@@ -218,7 +244,7 @@ export function GameBoard() {
                 isCardDisabled={isCardDisabled}
                 selectedCardId={selectedCard?.id ?? null}
                 isTargeting={isTargeting}
-                onSelectCard={handleSelectCard}
+                onSelectCard={handleCardClick}
               />
               {isMyTurn && !self.isEliminated && (
                 <button type="button" className="btn-sticker" onClick={() => endTurn(roomId, self.id)}>
@@ -230,7 +256,12 @@ export function GameBoard() {
         </div>
       </div>
 
-      <CardZoomModal card={zoomedCard} onClose={() => setZoomedCard(null)} />
+      <CardZoomModal
+        card={cardModal?.card ?? null}
+        onClose={() => setCardModal(null)}
+        onConfirm={cardModal?.confirmAction}
+        confirmLabel="Jouer cette carte"
+      />
 
       {gameState.phase === "playing" && gameState.pendingVote && (
         <VotePanel

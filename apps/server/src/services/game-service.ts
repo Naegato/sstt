@@ -130,6 +130,11 @@ export class GameService {
     return this.handleEvent(roomId, { type: "MANUAL_ACTION_CONFIRMED", playerId, cardId, timestamp: Date.now() });
   }
 
+  /** "Rejouer une partie" : remet la room en lobby avec les mêmes joueurs (voir resetGameToLobby). */
+  resetGame(roomId: RoomId): EngineResult {
+    return this.handleEvent(roomId, { type: "GAME_RESET", timestamp: Date.now() });
+  }
+
   private drawForCurrentPlayer(roomId: RoomId, result: EngineResult): EngineResult {
     if (result.state.phase !== "playing" || !result.state.currentPlayerId) {
       return result;

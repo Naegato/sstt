@@ -10,6 +10,7 @@ export const CLIENT_EVENTS = {
   PASS_HOT_POTATO: "game:pass-hot-potato",
   CONFIRM_MANUAL_ACTION: "game:confirm-manual-action",
   CHALLENGE_ELIMINATION: "game:challenge-elimination",
+  RESET_GAME: "game:reset",
   CHAT: "chat:message",
 } as const;
 

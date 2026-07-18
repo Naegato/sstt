@@ -12,7 +12,7 @@ export function LogoutButton() {
   };
 
   return (
-    <button type="button" onClick={handleClick}>
+    <button type="button" className="btn-sticker btn-sticker--zone" onClick={handleClick}>
       Se déconnecter
     </button>
   );

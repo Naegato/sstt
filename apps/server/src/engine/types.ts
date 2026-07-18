@@ -20,7 +20,8 @@ export type SideEffect =
   | { type: "CARD_DISCARDED_AFTER_PLAY"; playerId: PlayerId; cardId: CardId }
   | { type: "DENUNCIATION_STARTED"; accuserId: PlayerId; accusedId: PlayerId }
   | { type: "CARD_STOLEN_AND_FORCE_PLAYED"; playerId: PlayerId; targetPlayerId: PlayerId; cardId: CardId }
-  | { type: "TURN_DIRECTION_REVERSED" };
+  | { type: "TURN_DIRECTION_REVERSED" }
+  | { type: "GAME_RESET" };
 
 export type EngineResult = {
   state: GameState;

@@ -2216,3 +2216,62 @@ describe("Moteur — sens de rotation (Gilet jaune)", () => {
     expect(result.state.turnDirection).toBe(1);
   });
 });
+
+describe("Moteur — rejouer une partie (GAME_RESET)", () => {
+  it("remet la room en lobby avec les mêmes joueurs mais tout réinitialisé", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const bombe = makeCard({ id: "bombe-1", name: "Bombe", effects: [{ type: "ADD_POINTS", amount: 8 }] });
+    state = startGame(state, [bombe, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bombe.id, timestamp: 3 }).state;
+    state = updatePlayer(state, "p3", (p) => ({ ...p, isEliminated: true }));
+    state = { ...state, phase: "ended", winnerIds: ["p1"] };
+
+    const result = processEvent(state, { type: "GAME_RESET", timestamp: 4 });
+
+    expect(result.state.phase).toBe("lobby");
+    expect(result.state.winnerIds).toBeNull();
+    expect(result.state.currentPlayerId).toBeNull();
+    expect(result.state.drawPile).toEqual([]);
+    expect(result.state.turnDirection).toBe(1);
+    expect(result.state.players.map((p) => [p.id, p.name])).toEqual([
+      ["p1", "Alice"],
+      ["p2", "Bob"],
+      ["p3", "Carol"],
+    ]);
+    for (const player of result.state.players) {
+      expect(player.hand).toEqual([]);
+      expect(player.playedCards).toEqual([]);
+      expect(player.points).toBe(0);
+      expect(player.isEliminated).toBe(false);
+      expect(player.skipTurns).toBe(0);
+    }
+  });
+
+  it("fonctionne même sans vainqueur (partie terminée sans survivant)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    state = startGame(state, makeDeck(20));
+    state = { ...state, phase: "ended", winnerIds: null };
+
+    const result = processEvent(state, { type: "GAME_RESET", timestamp: 3 });
+    expect(result.state.phase).toBe("lobby");
+    expect(result.state.players).toHaveLength(2);
+  });
+
+  it("après reset, une nouvelle partie peut redémarrer normalement", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    state = startGame(state, makeDeck(20));
+    state = { ...state, phase: "ended", winnerIds: ["p1"] };
+    state = processEvent(state, { type: "GAME_RESET", timestamp: 3 }).state;
+
+    const result = startGame(state, makeDeck(20));
+    expect(result.phase).toBe("playing");
+    expect(result.currentPlayerId).toBe("p1");
+  });
+
+  it("refuse de réinitialiser une partie qui n'est pas terminée", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    state = startGame(state, makeDeck(20));
+
+    expect(() => processEvent(state, { type: "GAME_RESET", timestamp: 3 })).toThrow();
+  });
+});

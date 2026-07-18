@@ -114,6 +114,16 @@ export type HotPotatoPassedEvent = BaseEvent & {
   playerId: PlayerId;
 };
 
+/**
+ * "Rejouer une partie" : remet la room en lobby avec les MÊMES joueurs (id/nom
+ * conservés), mains/cartes posées/points/élimination/etc réinitialisés — voir
+ * `resetGameToLobby()` dans `apps/server/src/engine/state.ts`. Seule exception,
+ * comme "Enfoiré !", au court-circuit `phase === "ended"` de `processEvent()`.
+ */
+export type GameResetEvent = BaseEvent & {
+  type: "GAME_RESET";
+};
+
 export type GameEvent =
   | PlayerJoinedEvent
   | GameStartedEvent
@@ -126,4 +136,5 @@ export type GameEvent =
   | GameEndedEvent
   | VoteCastEvent
   | PlayedCardStolenEvent
-  | HotPotatoPassedEvent;
+  | HotPotatoPassedEvent
+  | GameResetEvent;

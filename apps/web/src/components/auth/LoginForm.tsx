@@ -1,8 +1,11 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError, login } from "@/lib/api";
+import { type LoginInput, loginSchema } from "@/lib/schemas";
 
 const OAUTH_PROVIDERS = [
   { id: "discord", label: "Continuer avec Discord" },
@@ -15,47 +18,54 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const oauthError = searchParams.get("error");
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginInput>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
+  const onSubmit = async (data: LoginInput) => {
+    setServerError(null);
     try {
-      await login(email, password);
+      await login(data.email, data.password);
       router.push("/");
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Erreur inconnue");
-    } finally {
-      setSubmitting(false);
+      setServerError(err instanceof ApiError ? err.message : "Erreur inconnue");
     }
   };
 
   return (
-    <div className="auth-form">
-      <form onSubmit={handleSubmit}>
-        <label>
-          Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+    <div className="sticker-form-card">
+      <form onSubmit={handleSubmit(onSubmit)} className="sticker-form">
+        <label className="sticker-form__field">
+          <span>Email</span>
+          <input className="input-sticker" type="email" {...register("email")} />
+          {errors.email && <span className="sticker-form__error">{errors.email.message}</span>}
         </label>
-        <label>
-          Mot de passe
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <label className="sticker-form__field">
+          <span>Mot de passe</span>
+          <input className="input-sticker" type="password" {...register("password")} />
+          {errors.password && <span className="sticker-form__error">{errors.password.message}</span>}
         </label>
-        {(error || oauthError) && <p className="auth-form__error">{error ?? "Connexion OAuth échouée."}</p>}
-        <button type="submit" disabled={submitting}>
+        {(serverError || oauthError) && (
+          <p className="sticker-form__error sticker-form__error--banner">
+            {serverError ?? "Connexion OAuth échouée."}
+          </p>
+        )}
+        <button type="submit" className="btn-sticker" disabled={isSubmitting}>
           Se connecter
         </button>
       </form>
 
-      <div className="auth-form__oauth">
+      <div className="sticker-form__oauth">
         {OAUTH_PROVIDERS.map((provider) => (
-          <a key={provider.id} href={`${API_URL}/api/auth/${provider.id}`}>
+          <a key={provider.id} className="btn-sticker btn-sticker--zone" href={`${API_URL}/api/auth/${provider.id}`}>
             {provider.label}
           </a>
         ))}

@@ -22,6 +22,29 @@ export function createInitialState(roomId: RoomId): GameState {
   };
 }
 
+/**
+ * "Rejouer une partie" : remet la room en lobby en conservant les MÊMES
+ * joueurs (id/nom), tout le reste réinitialisé comme `createInitialState` —
+ * mains, cartes posées, points, élimination, etc. Contrairement à un simple
+ * `createInitialState`, ne perd pas la liste des joueurs déjà connectés (ils
+ * n'auraient sinon aucun moyen de "rejoindre" une room déjà repartie de zéro
+ * sans re-déclencher PLAYER_JOINED côté client).
+ */
+export function resetGameToLobby(state: GameState): GameState {
+  return {
+    ...createInitialState(state.roomId),
+    players: state.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      hand: [],
+      playedCards: [],
+      isEliminated: false,
+      points: 0,
+      skipTurns: 0,
+    })),
+  };
+}
+
 export function findPlayer(state: GameState, playerId: PlayerId): Player {
   const player = state.players.find((p) => p.id === playerId);
   if (!player) {

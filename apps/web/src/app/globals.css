@@ -56,57 +56,172 @@ button {
   font-family: inherit;
 }
 
-/* ---------- Auth / lobby forms (pré-refonte, gardés fonctionnels) ---------- */
+/* ---------- Sticker logo (page d'accueil) ---------- */
 
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 320px;
+.logo-sticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--accent-hot);
+  color: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: 16px;
+  padding: 0.65rem 1.3rem;
+  transform: rotate(-3deg);
+  box-shadow: 6px 6px 0 var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.1rem, 3.2vw, 1.7rem);
+  line-height: 1.15;
 }
 
-.auth-form form {
+.logo-sticker__mark {
+  font-size: 1.3em;
+  transform: rotate(8deg);
+  display: inline-block;
+}
+
+.home-tagline {
+  color: var(--text-dim);
+  font-size: 1rem;
+  max-width: 40ch;
+}
+
+.home-identity {
+  font-size: 0.9rem;
+  color: var(--text-dim);
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.auth-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.auth-form__error {
-  color: var(--accent-hot);
-}
-
-.auth-form__oauth {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.auth-form__oauth a {
-  border: 2px solid var(--board-line);
-  border-radius: 8px;
-  padding: 0.5rem;
-  text-align: center;
-  text-decoration: none;
+.home-identity strong {
   color: var(--text-on-board);
 }
 
-form.join-room-form {
+.home-cta {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  max-width: 320px;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-form.join-room-form label {
+.home-cta__secondary {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.home-cta__secondary a {
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+/* ---------- Pages centrées (accueil, login, register, lobby) ---------- */
+
+.centered-page {
+  min-height: calc(100vh - 3rem);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  text-align: center;
+}
+
+.sticker-page-card {
+  background: rgba(0, 0, 0, 0.28);
+  border: 4px solid var(--ink);
+  border-radius: 20px;
+  padding: 2rem clamp(1.25rem, 5vw, 2.5rem);
+  box-shadow: 7px 7px 0 rgba(0, 0, 0, 0.45);
+  width: min(400px, 92vw);
+  text-align: left;
+  transform: rotate(-0.5deg);
+}
+
+.sticker-page-card h1 {
+  font-size: 1.35rem;
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.sticker-page-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.sticker-page-links a {
+  font-weight: 700;
+}
+
+/* ---------- Formulaires sticker (login, register, rejoindre une room) ---------- */
+
+.sticker-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.sticker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.sticker-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.sticker-form__field .input-sticker {
+  font-size: 1rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.sticker-form__error {
+  color: var(--accent-hot);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sticker-form__error--banner {
+  background: rgba(255, 71, 87, 0.12);
+  border: 2px solid var(--accent-hot);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.sticker-form button[type="submit"] {
+  margin-top: 0.25rem;
+}
+
+.sticker-form__oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 1rem;
+  border-top: 2px dashed var(--board-line);
+}
+
+.sticker-form__oauth a {
+  text-align: center;
+  text-decoration: none;
+  font-size: 0.85rem;
 }
 
 /* ---------- Sticker button (usages généraux) ---------- */
@@ -746,6 +861,12 @@ form.join-room-form label {
   color: #3c3548;
 }
 
+.zoom-modal__actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 .zoom-modal__close {
   position: absolute;
   top: -16px;
@@ -794,6 +915,14 @@ form.join-room-form label {
   font-family: var(--font-display), sans-serif;
   box-shadow: 4px 4px 0 var(--ink);
   transform: rotate(-1deg);
+}
+
+.game-board__end {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
 }
 
 .game-board__winner {

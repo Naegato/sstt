@@ -68,6 +68,10 @@ export function useSocket() {
     socketRef.current.emit(CLIENT_EVENTS.CONFIRM_MANUAL_ACTION, { roomId, playerId, cardId });
   };
 
+  const resetGame = (roomId: string) => {
+    socketRef.current.emit(CLIENT_EVENTS.RESET_GAME, { roomId });
+  };
+
   return {
     joinRoom,
     startGame,
@@ -78,5 +82,6 @@ export function useSocket() {
     passHotPotato,
     denouncePlayer,
     confirmManualAction,
+    resetGame,
   };
 }

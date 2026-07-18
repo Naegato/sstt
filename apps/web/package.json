@@ -13,13 +13,16 @@
   },
   "dependencies": {
     "@card-game/shared-types": "workspace:*",
+    "@hookform/resolvers": "^5.4.0",
+    "jose": "^5.9.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zustand": "^5.0.0",
+    "react-hook-form": "^7.82.0",
+    "server-only": "^0.0.1",
     "socket.io-client": "^4.8.0",
-    "jose": "^5.9.0",
-    "server-only": "^0.0.1"
+    "zod": "^4.4.3",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
