@@ -1,4 +1,4 @@
-import type { Card, GameState, Player, PlayerId, RoomId, VoteChoice, VoteOutcome } from "@card-game/shared-types";
+import type { Card, CardId, GameState, Player, PlayerId, RoomId, VoteChoice, VoteOutcome } from "@card-game/shared-types";
 import { STARTING_HAND_SIZE, WINNING_POINTS } from "@card-game/shared-types";
 import { GameLogicError } from "./errors.js";
 import type { EngineResult, SideEffect } from "./types.js";
@@ -19,6 +19,8 @@ export function createInitialState(roomId: RoomId): GameState {
     stolenThisTurn: false,
     pendingFinito: null,
     turnDirection: 1,
+    pendingChoice: null,
+    openReflexCardId: null,
   };
 }
 
@@ -229,6 +231,12 @@ export function eliminateSpecificPlayers(state: GameState, playerIds: PlayerId[]
   }
 
   return { state: next, sideEffects };
+}
+
+/** Ferme la fenêtre de dénonciation d'une carte réflexe instantanée (voir `GameState.openReflexCardId`), à la fin du tour. */
+export function clearOpenReflexWindow(state: GameState): GameState {
+  if (state.openReflexCardId === null) return state;
+  return { ...state, openReflexCardId: null };
 }
 
 /** Ferme la fenêtre de réaction "Gros nul !" (voir REACT_TO_GROUP_ELIMINATION dans cards.ts). */
@@ -525,9 +533,6 @@ export function startDenunciationVote(
   }
   const accuser = findPlayer(state, accuserId);
   const accused = findPlayer(state, accusedId);
-  if (accuser.id === accused.id) {
-    throw new GameLogicError("Impossible de se dénoncer soi-même", "INVALID_DENUNCIATION_TARGET", { accuserId });
-  }
   if (accuser.isEliminated) {
     throw new GameLogicError("Un joueur éliminé ne peut pas dénoncer quelqu'un", "NOT_ELIGIBLE_TO_DENOUNCE", {
       accuserId,
@@ -537,7 +542,9 @@ export function startDenunciationVote(
     throw new GameLogicError("Ce joueur est déjà éliminé", "INVALID_DENUNCIATION_TARGET", { accusedId });
   }
 
-  const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated && p.id !== accusedId).map((p) => p.id);
+  // Tout le monde vote, y compris le dénoncé (et l'auto-dénonciation est
+  // possible : accuserId peut être égal à accusedId).
+  const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
   return {
     ...state,
     pendingVote: { mode: "denunciation", accuserId, accusedId, reason, eligiblePlayerIds, votes: {} },
@@ -553,6 +560,95 @@ export function declareWinners(state: GameState, winnerIds: PlayerId[]): EngineR
     state: { ...state, phase: "ended", winnerIds },
     sideEffects: [{ type: "GAME_WON", winnerIds }],
   };
+}
+
+/** Ouvre "Bataille" : tous les joueurs en jeu choisissent en secret pierre/feuille/ciseaux. */
+export function startRockPaperScissors(state: GameState, cardId: CardId): GameState {
+  const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
+  return {
+    ...state,
+    pendingChoice: { mode: "rockPaperScissors", cardId, eligiblePlayerIds, choices: {} },
+  };
+}
+
+/** Ouvre "Chiffre" : tous les joueurs en jeu montrent en secret 1 à 5 doigts ; `actorPlayerId` gagne si la somme est première. */
+export function startFingerCountChallenge(state: GameState, cardId: CardId, actorPlayerId: PlayerId): GameState {
+  const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
+  return {
+    ...state,
+    pendingChoice: { mode: "fingerCount", cardId, actorPlayerId, eligiblePlayerIds, choices: {} },
+  };
+}
+
+function isPrime(n: number): boolean {
+  if (n < 2) return false;
+  for (let i = 2; i * i <= n; i++) {
+    if (n % i === 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Enregistre le choix d'un joueur pour le choix simultané en cours (Bataille,
+ * Chiffre). Une fois que tous les joueurs éligibles ont choisi, résout selon
+ * `pendingChoice.mode` et efface `pendingChoice`.
+ */
+export function submitChoice(state: GameState, playerId: PlayerId, value: string): EngineResult {
+  if (!state.pendingChoice) {
+    throw new GameLogicError("Aucun choix en cours", "NO_PENDING_CHOICE", { playerId });
+  }
+  if (!state.pendingChoice.eligiblePlayerIds.includes(playerId)) {
+    throw new GameLogicError("Ce joueur n'est pas concerné par ce choix", "NOT_ELIGIBLE_FOR_CHOICE", { playerId });
+  }
+
+  if (state.pendingChoice.mode === "rockPaperScissors") {
+    if (value !== "pierre" && value !== "feuille" && value !== "ciseaux") {
+      throw new GameLogicError("Choix invalide pour Bataille", "INVALID_CHOICE", { playerId, value });
+    }
+    const rpsChoice: "pierre" | "feuille" | "ciseaux" = value;
+    const pendingChoice = {
+      ...state.pendingChoice,
+      choices: { ...state.pendingChoice.choices, [playerId]: rpsChoice },
+    };
+    let next: GameState = { ...state, pendingChoice };
+    const sideEffects: SideEffect[] = [{ type: "CHOICE_MADE", playerId }];
+
+    const allChosen = pendingChoice.eligiblePlayerIds.every((id) => pendingChoice.choices[id] !== undefined);
+    if (!allChosen) {
+      return { state: next, sideEffects };
+    }
+    next = { ...next, pendingChoice: null };
+    const losers = pendingChoice.eligiblePlayerIds.filter((id) => pendingChoice.choices[id] === "feuille");
+    if (losers.length > 0) {
+      const result = eliminateSpecificPlayers(next, losers);
+      return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };
+    }
+    return { state: next, sideEffects };
+  }
+
+  // mode === "fingerCount"
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 5) {
+    throw new GameLogicError("Choix invalide pour Chiffre (1 à 5 doigts)", "INVALID_CHOICE", { playerId, value });
+  }
+  const pendingChoice = {
+    ...state.pendingChoice,
+    choices: { ...state.pendingChoice.choices, [playerId]: parsed as 1 | 2 | 3 | 4 | 5 },
+  };
+  let next: GameState = { ...state, pendingChoice };
+  const sideEffects: SideEffect[] = [{ type: "CHOICE_MADE", playerId }];
+
+  const allChosen = pendingChoice.eligiblePlayerIds.every((id) => pendingChoice.choices[id] !== undefined);
+  if (!allChosen) {
+    return { state: next, sideEffects };
+  }
+  next = { ...next, pendingChoice: null };
+  const sum = pendingChoice.eligiblePlayerIds.reduce((total, id) => total + (pendingChoice.choices[id] ?? 0), 0);
+  if (isPrime(sum)) {
+    const result = declareWinners(next, [pendingChoice.actorPlayerId]);
+    return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };
+  }
+  return { state: next, sideEffects };
 }
 
 /**

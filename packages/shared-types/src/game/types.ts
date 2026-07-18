@@ -211,7 +211,23 @@ export type AutomatedEffect =
    * Limite assumée, comme "Pioche verrouillée !" : si la main du porteur est
    * vide, rien ne se passe (pas d'élimination automatique généralisée).
    */
-  | { type: "FORCE_RANDOM_CARD_EACH_TURN" };
+  | { type: "FORCE_RANDOM_CARD_EACH_TURN" }
+  /**
+   * (Bataille) Ouvre un choix simultané secret pierre/feuille/ciseaux pour
+   * tous les joueurs en jeu (y compris l'auteur de la carte — le texte dit
+   * "tout le monde joue", sans exception). Résolu par `submitChoice()` une
+   * fois que tous ont choisi : les joueurs ayant choisi "feuille" sont
+   * éliminés (règle de la carte, pas une vraie pierre-feuille-ciseaux à
+   * interaction — juste une valeur fixe perdante). Voir `GameState.pendingChoice`.
+   */
+  | { type: "START_ROCK_PAPER_SCISSORS" }
+  /**
+   * (Chiffre) Ouvre un choix simultané secret (1 à 5 doigts) pour tous les
+   * joueurs en jeu. Une fois tous les choix faits, si la somme totale est un
+   * nombre premier, l'auteur de la carte gagne immédiatement la partie ;
+   * sinon rien ne se passe. Voir `GameState.pendingChoice`.
+   */
+  | { type: "START_FINGER_COUNT_CHALLENGE" };
 
 export type Card = {
   id: CardId;
@@ -221,6 +237,21 @@ export type Card = {
   text: string;
   /** Vide = effet manuel : le moteur affiche `text` et attend une confirmation des joueurs. */
   effects: AutomatedEffect[];
+};
+
+/**
+ * Une entrée du catalogue des cartes du jeu (`GET /api/cards`), pour affichage
+ * dans une modale/page de consultation — pas un `Card` jouable (pas d'`id`
+ * d'instance individuelle) : une entrée par nom+texte distinct, avec le nombre
+ * d'exemplaires regroupés (ex: 6 "Bombe" identiques -> 1 entrée, `quantity: 6`).
+ */
+export type CardCatalogEntry = {
+  name: string;
+  rarity: CardRarity;
+  text: string;
+  quantity: number;
+  /** `true` si le moteur résout cette carte automatiquement, `false` si elle reste manuelle (texte + confirmation des joueurs). */
+  automated: boolean;
 };
 
 export type Player = {
@@ -269,13 +300,14 @@ export type PendingVote =
     }
   | {
       /**
-       * Dénonciation : un joueur estime qu'un autre n'a pas respecté une carte
-       * manuelle (texte affiché, pas d'automatisation) — ex: n'a pas fait le
-       * geste demandé, a dit un mot interdit... Tous les joueurs en jeu votent
-       * SAUF le dénoncé (conflit d'intérêt). Majorité stricte de "oui" ->
-       * éliminé ; égalité ou majorité de "non" -> rien ne se passe. Pas liée à
-       * une carte précise (`cardId` absent), déclenchable à tout moment par
-       * n'importe quel joueur, sans rapport avec l'ordre des tours.
+       * Dénonciation : un joueur estime qu'un autre (ou lui-même — l'auto-
+       * dénonciation est permise) n'a pas respecté une carte manuelle (texte
+       * affiché, pas d'automatisation) — ex: n'a pas fait le geste demandé, a
+       * dit un mot interdit... TOUS les joueurs en jeu votent, y compris le
+       * dénoncé lui-même. Majorité stricte de "oui" -> éliminé ; égalité ou
+       * majorité de "non" -> rien ne se passe. Pas liée à une carte précise
+       * (`cardId` absent), déclenchable à tout moment par n'importe quel
+       * joueur, sans rapport avec l'ordre des tours.
        */
       mode: "denunciation";
       accuserId: PlayerId;
@@ -284,6 +316,29 @@ export type PendingVote =
       reason: string;
       eligiblePlayerIds: PlayerId[];
       votes: Partial<Record<PlayerId, VoteChoice>>;
+    };
+
+/**
+ * Choix simultané secret à PLUSIEURS options (contrairement à `PendingVote`,
+ * toujours oui/non) — ex: Bataille (pierre/feuille/ciseaux), Chiffre (1 à 5
+ * doigts). Séparé de `PendingVote` car la forme du choix diffère vraiment
+ * (valeur libre, pas juste oui/non) ; même convention de secret côté UI.
+ */
+export type PendingChoice =
+  | {
+      /** "Bataille" : tous les joueurs en jeu choisissent, ceux qui ont choisi "feuille" sont éliminés. */
+      mode: "rockPaperScissors";
+      cardId: CardId;
+      eligiblePlayerIds: PlayerId[];
+      choices: Partial<Record<PlayerId, "pierre" | "feuille" | "ciseaux">>;
+    }
+  | {
+      /** "Chiffre" : tous les joueurs en jeu montrent 1 à 5 doigts ; si la somme est première, l'auteur de la carte gagne. */
+      mode: "fingerCount";
+      cardId: CardId;
+      actorPlayerId: PlayerId;
+      eligiblePlayerIds: PlayerId[];
+      choices: Partial<Record<PlayerId, 1 | 2 | 3 | 4 | 5>>;
     };
 
 export type GameState = {
@@ -340,4 +395,15 @@ export type GameState = {
    * plusieurs fois au cours d'une partie si plusieurs Gilets jaunes se succèdent.
    */
   turnDirection: 1 | -1;
+  /** Choix simultané à options multiples en cours (Bataille, Chiffre) — voir `PendingChoice`. Bloque la fin de tour comme `pendingVote`. */
+  pendingChoice: PendingChoice | null;
+  /**
+   * Id de la dernière carte manuelle "réflexe instantané" jouée (ex: Index
+   * réflexe, Nez à nez, Pied de nez) tant qu'elle reste dénonçable — contrairement
+   * aux règles manuelles permanentes (Moi, Toi, Zombies...), le texte de ces
+   * cartes se constate au moment même où elles sont jouées, pas plusieurs tours
+   * après. Remis à `null` à la fin du tour (`TURN_ENDED`), même principe que
+   * `lastEliminationBatch`.
+   */
+  openReflexCardId: CardId | null;
 };

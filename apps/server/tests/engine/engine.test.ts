@@ -1863,14 +1863,14 @@ describe("Moteur — dénonciation (cartes manuelles non respectées)", () => {
     });
   }
 
-  it("ouvre un vote qui exclut le dénoncé mais inclut le dénonciateur", () => {
+  it("ouvre un vote où tout le monde vote, y compris le dénoncé", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
     state = startGame(state, makeDeck(20));
 
     const result = denounce(state, "p1", "p3");
 
     expect(result.state.pendingVote?.mode).toBe("denunciation");
-    expect(result.state.pendingVote?.eligiblePlayerIds.sort()).toEqual(["p1", "p2"]);
+    expect(result.state.pendingVote?.eligiblePlayerIds.sort()).toEqual(["p1", "p2", "p3"]);
   });
 
   it("majorité stricte de 'oui' élimine le dénoncé", () => {
@@ -1878,7 +1878,7 @@ describe("Moteur — dénonciation (cartes manuelles non respectées)", () => {
     state = startGame(state, makeDeck(20));
     state = denounce(state, "p1", "p4").state;
 
-    const result = castAllVotes(state, { p1: "oui", p2: "oui", p3: "non" });
+    const result = castAllVotes(state, { p1: "oui", p2: "oui", p3: "oui", p4: "non" });
 
     expect(result.players.find((p) => p.id === "p4")!.isEliminated).toBe(true);
     expect(result.pendingVote).toBeNull();
@@ -1889,7 +1889,7 @@ describe("Moteur — dénonciation (cartes manuelles non respectées)", () => {
     state = startGame(state, makeDeck(20));
     state = denounce(state, "p1", "p3").state;
 
-    const result = castAllVotes(state, { p1: "oui", p2: "non" });
+    const result = castAllVotes(state, { p1: "oui", p2: "non", p3: "non" });
 
     expect(result.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
   });
@@ -1899,16 +1899,25 @@ describe("Moteur — dénonciation (cartes manuelles non respectées)", () => {
     state = startGame(state, makeDeck(20));
     state = denounce(state, "p1", "p4").state;
 
-    const result = castAllVotes(state, { p1: "non", p2: "non", p3: "oui" });
+    const result = castAllVotes(state, { p1: "non", p2: "non", p3: "oui", p4: "non" });
 
     expect(result.players.find((p) => p.id === "p4")!.isEliminated).toBe(false);
   });
 
-  it("refuse de se dénoncer soi-même", () => {
-    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+  it("permet l'auto-dénonciation", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
     state = startGame(state, makeDeck(20));
+    state = denounce(state, "p1", "p1").state;
 
-    expect(() => denounce(state, "p1", "p1")).toThrow();
+    expect(state.pendingVote?.mode).toBe("denunciation");
+    if (state.pendingVote?.mode === "denunciation") {
+      expect(state.pendingVote.accuserId).toBe("p1");
+      expect(state.pendingVote.accusedId).toBe("p1");
+      expect(state.pendingVote.eligiblePlayerIds.sort()).toEqual(["p1", "p2", "p3"]);
+    }
+
+    const result = castAllVotes(state, { p1: "oui", p2: "oui", p3: "non" });
+    expect(result.players.find((p) => p.id === "p1")!.isEliminated).toBe(true);
   });
 
   it("refuse si le dénonciateur est déjà éliminé", () => {
@@ -2273,5 +2282,170 @@ describe("Moteur — rejouer une partie (GAME_RESET)", () => {
     state = startGame(state, makeDeck(20));
 
     expect(() => processEvent(state, { type: "GAME_RESET", timestamp: 3 })).toThrow();
+  });
+});
+
+describe("Moteur — choix simultané à options multiples (Bataille)", () => {
+  function makeBatailleCard(id = "bataille-1") {
+    return makeCard({ id, name: "Bataille", effects: [{ type: "START_ROCK_PAPER_SCISSORS" }] });
+  }
+
+  it("ouvre un choix pour tous les joueurs en jeu, y compris l'auteur", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const bataille = makeBatailleCard();
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 });
+    expect(result.state.pendingChoice).toEqual({
+      mode: "rockPaperScissors",
+      cardId: bataille.id,
+      eligiblePlayerIds: ["p1", "p2", "p3"],
+      choices: {},
+    });
+  });
+
+  it("élimine tous ceux qui ont choisi \"feuille\" une fois tout le monde a choisi", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const bataille = makeBatailleCard();
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "pierre", timestamp: 4 }).state;
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "feuille", timestamp: 5 }).state;
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p3", value: "ciseaux", timestamp: 6 });
+
+    expect(result.state.pendingChoice).toBeNull();
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
+  });
+
+  it("personne éliminé si personne n'a choisi \"feuille\"", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const bataille = makeBatailleCard();
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "pierre", timestamp: 4 }).state;
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "ciseaux", timestamp: 5 });
+
+    expect(result.state.pendingChoice).toBeNull();
+    expect(result.state.players.every((p) => !p.isEliminated)).toBe(true);
+  });
+
+  it("bloque la fin de tour tant que tous n'ont pas choisi", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const bataille = makeBatailleCard();
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    expect(() => processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4 })).toThrow();
+  });
+
+  it("refuse un choix invalide", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const bataille = makeBatailleCard();
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    expect(() =>
+      processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "puits", timestamp: 4 }),
+    ).toThrow();
+  });
+});
+
+describe("Moteur — choix simultané à options multiples (Chiffre)", () => {
+  function makeChiffreCard(id = "chiffre-1") {
+    return makeCard({ id, name: "Chiffre", effects: [{ type: "START_FINGER_COUNT_CHALLENGE" }] });
+  }
+
+  it("l'auteur gagne si la somme des doigts montrés est un nombre premier", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const chiffre = makeChiffreCard();
+    state = startGame(state, [chiffre, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: chiffre.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "2", timestamp: 4 }).state;
+    // 2 + 3 = 5, nombre premier.
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "3", timestamp: 5 });
+
+    expect(result.state.phase).toBe("ended");
+    expect(result.state.winnerIds).toEqual(["p1"]);
+  });
+
+  it("rien ne se passe si la somme n'est pas première", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const chiffre = makeChiffreCard();
+    state = startGame(state, [chiffre, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: chiffre.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "2", timestamp: 4 }).state;
+    // 2 + 2 = 4, pas premier.
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "2", timestamp: 5 });
+
+    expect(result.state.phase).toBe("playing");
+    expect(result.state.pendingChoice).toBeNull();
+  });
+
+  it("refuse un choix hors de 1 à 5", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const chiffre = makeChiffreCard();
+    state = startGame(state, [chiffre, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: chiffre.id, timestamp: 3 }).state;
+
+    expect(() =>
+      processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "7", timestamp: 4 }),
+    ).toThrow();
+  });
+});
+
+describe("Moteur — fenêtre de dénonciation d'une carte réflexe instantanée (Index réflexe, Nez à nez, Pied de nez)", () => {
+  function makeReflexCard(id = "index-reflexe-1") {
+    return makeCard({ id, name: "Index réflexe", rarity: "etoile", effects: [] });
+  }
+
+  it("ouvre la fenêtre (openReflexCardId) quand une carte réflexe est jouée", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const reflex = makeReflexCard();
+    state = startGame(state, [reflex, ...makeDeck(20)]);
+
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: reflex.id, timestamp: 3 });
+
+    expect(result.state.openReflexCardId).toBe(reflex.id);
+  });
+
+  it("ne s'ouvre pas pour une règle manuelle permanente (ex: Moi)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const moi = makeCard({ id: "moi-1", name: "Moi", effects: [] });
+    state = startGame(state, [moi, ...makeDeck(20)]);
+
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: moi.id, timestamp: 3 });
+
+    expect(result.state.openReflexCardId).toBeNull();
+  });
+
+  it("se referme à la fin du tour où la carte réflexe a été jouée", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const reflex = makeReflexCard();
+    state = startGame(state, [reflex, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: reflex.id, timestamp: 3 }).state;
+    expect(state.openReflexCardId).toBe(reflex.id);
+
+    const result = processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4 });
+
+    expect(result.state.openReflexCardId).toBeNull();
+  });
+
+  it("reste ouverte si une autre carte (non réflexe) est jouée tant que le tour n'est pas terminé", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const reflex = makeReflexCard();
+    const filler = makeCard({ id: "filler-1", name: "Filler" });
+    state = startGame(state, [reflex, filler, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: reflex.id, timestamp: 3 }).state;
+    // Une autre carte, sans rapport, est jouée par le même joueur sans que le
+    // tour se termine — seul TURN_ENDED referme la fenêtre, pas "une autre carte".
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler.id, timestamp: 4 }).state;
+
+    expect(state.openReflexCardId).toBe(reflex.id);
   });
 });

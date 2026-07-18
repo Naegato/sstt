@@ -7,6 +7,7 @@ import {
   checkEndOfTurnDanger,
   checkFinito,
   clearEliminationBatch,
+  clearOpenReflexWindow,
   createInitialState,
   drawCards,
   eliminatePlayer,
@@ -16,6 +17,7 @@ import {
   startDenunciationVote,
   startGame,
   stealPlayedCard,
+  submitChoice,
 } from "./state.js";
 import { advanceTurn } from "./turns.js";
 import type { EngineResult, SideEffect } from "./types.js";
@@ -72,8 +74,16 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
           { voteMode: state.pendingVote.mode },
         );
       }
-      // La fenêtre de réaction "Gros nul !" se referme à la fin du tour courant.
-      const stateWithoutBatch = clearEliminationBatch(state);
+      if (state.pendingChoice) {
+        throw new GameLogicError(
+          "Un choix simultané est en cours, impossible de terminer le tour avant sa résolution",
+          "CHOICE_PENDING",
+          { choiceMode: state.pendingChoice.mode },
+        );
+      }
+      // La fenêtre de réaction "Gros nul !" et celle de dénonciation d'une carte
+      // réflexe instantanée se referment toutes les deux à la fin du tour courant.
+      const stateWithoutBatch = clearOpenReflexWindow(clearEliminationBatch(state));
       // Vérifie d'abord si le joueur dont le tour se termine porte une carte
       // "danger" (Dragon, Laser...) avant de calculer le joueur suivant.
       const dangerCheck = checkEndOfTurnDanger(stateWithoutBatch, event.playerId);
@@ -126,6 +136,8 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
       }
       return { state: resetGameToLobby(state), sideEffects: [{ type: "GAME_RESET" }] };
     }
+    case "CHOICE_SUBMITTED":
+      return submitChoice(state, event.playerId, event.value);
     default: {
       const exhaustiveCheck: never = event;
       throw new Error(`Event inconnu: ${JSON.stringify(exhaustiveCheck)}`);

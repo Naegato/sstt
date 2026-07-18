@@ -18,11 +18,22 @@ import {
   setPointsToWin,
   startCakeOrGraveVote,
   startDeathOrTchiVote,
+  startFingerCountChallenge,
+  startRockPaperScissors,
   startSimultaneousVote,
   updatePlayer,
   winAllAlivePlayers,
 } from "./state.js";
 import type { EngineResult, SideEffect } from "./types.js";
+
+/**
+ * Cartes manuelles "réflexe instantané" (contrairement aux règles manuelles
+ * permanentes comme Moi/Toi/Zombies) : l'infraction se constate au moment même
+ * où la carte est jouée, pas plusieurs tours après — voir `GameState.openReflexCardId`,
+ * fermé à la fin du tour dans `index.ts`. Liste fermée, même principe que les
+ * autres listes par nom déjà utilisées dans le moteur (ex: "Bombe" dans state.ts).
+ */
+const REFLEX_CARD_NAMES = new Set(["Index réflexe", "Nez à nez", "Pied de nez"]);
 
 function removeFromHand(state: GameState, playerId: PlayerId, cardId: string): GameState {
   return updatePlayer(state, playerId, (p) => ({
@@ -74,6 +85,9 @@ function resolveForcedCardPlay(
     placementTargetId = wantsTargetPlacement ? defaultTargetId : playerId;
     next = placeInFrontOf(next, placementTargetId, card);
     sideEffects.push({ type: "CARD_MOVED_TO_PLAYED", playerId: placementTargetId, cardId: card.id });
+    if (REFLEX_CARD_NAMES.has(card.name)) {
+      next = { ...next, openReflexCardId: card.id };
+    }
   }
 
   for (const effect of card.effects) {
@@ -338,6 +352,16 @@ function applyOneEffect(
       return { state: next, sideEffects: [{ type: "VOTE_STARTED", cardId: card.id }] };
     }
 
+    case "START_ROCK_PAPER_SCISSORS": {
+      const next = startRockPaperScissors(state, card.id);
+      return { state: next, sideEffects: [{ type: "CHOICE_STARTED", cardId: card.id }] };
+    }
+
+    case "START_FINGER_COUNT_CHALLENGE": {
+      const next = startFingerCountChallenge(state, card.id, playerId);
+      return { state: next, sideEffects: [{ type: "CHOICE_STARTED", cardId: card.id }] };
+    }
+
     // Déjà géré par le placement par défaut dans playCard().
     case "PLACE_IN_FRONT_OF_SELF":
     case "PLACE_IN_FRONT_OF_TARGET":
@@ -465,6 +489,9 @@ export function playCard(state: GameState, event: CardPlayedEvent): EngineResult
     placementTargetId = wantsTargetPlacement ? (event.targetPlayerId as PlayerId) : player.id;
     next = placeInFrontOf(next, placementTargetId, card);
     sideEffects.push({ type: "CARD_MOVED_TO_PLAYED", playerId: placementTargetId, cardId: card.id });
+    if (REFLEX_CARD_NAMES.has(card.name)) {
+      next = { ...next, openReflexCardId: card.id };
+    }
   }
 
   const lastPlayedCardBeforeEffects = next.lastPlayedCard;

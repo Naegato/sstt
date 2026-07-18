@@ -135,6 +135,11 @@ export class GameService {
     return this.handleEvent(roomId, { type: "GAME_RESET", timestamp: Date.now() });
   }
 
+  /** Choix simultané secret en cours (Bataille, Chiffre) — voir GameState.pendingChoice. */
+  submitChoice(roomId: RoomId, playerId: PlayerId, value: string): EngineResult {
+    return this.handleEvent(roomId, { type: "CHOICE_SUBMITTED", playerId, value, timestamp: Date.now() });
+  }
+
   private drawForCurrentPlayer(roomId: RoomId, result: EngineResult): EngineResult {
     if (result.state.phase !== "playing" || !result.state.currentPlayerId) {
       return result;

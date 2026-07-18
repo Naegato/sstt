@@ -256,4 +256,16 @@ describe("loadPlayableDeck", () => {
       { type: "FORCE_RANDOM_CARD_EACH_TURN" },
     ]);
   });
+
+  it("branche START_ROCK_PAPER_SCISSORS sur \"Bataille\"", async () => {
+    const deck = await loadPlayableDeck();
+    const card = deck.find((c) => c.name === "Bataille");
+    expect(card?.effects).toEqual([{ type: "START_ROCK_PAPER_SCISSORS" }]);
+  });
+
+  it("branche START_FINGER_COUNT_CHALLENGE sur \"Chiffre\"", async () => {
+    const deck = await loadPlayableDeck();
+    const card = deck.find((c) => c.name === "Chiffre");
+    expect(card?.effects).toEqual([{ type: "START_FINGER_COUNT_CHALLENGE" }]);
+  });
 });

@@ -1,3 +1,5 @@
+import type { CardCatalogEntry } from "@card-game/shared-types";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export class ApiError extends Error {
@@ -31,4 +33,9 @@ export function login(email: string, password: string) {
 
 export function logout() {
   return apiFetch("/api/auth/logout", { method: "POST" });
+}
+
+export async function getCardCatalog(): Promise<CardCatalogEntry[]> {
+  const data = await apiFetch("/api/cards");
+  return data.cards;
 }

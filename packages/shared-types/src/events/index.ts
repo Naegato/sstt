@@ -124,6 +124,18 @@ export type GameResetEvent = BaseEvent & {
   type: "GAME_RESET";
 };
 
+/**
+ * Un joueur soumet son choix pour le choix simultané en cours (voir
+ * GameState.pendingChoice — Bataille, Chiffre). `value` est libre côté type
+ * (validée côté moteur selon `pendingChoice.mode`), même principe que
+ * `VoteCastEvent.choice` pour les votes oui/non.
+ */
+export type ChoiceSubmittedEvent = BaseEvent & {
+  type: "CHOICE_SUBMITTED";
+  playerId: PlayerId;
+  value: string;
+};
+
 export type GameEvent =
   | PlayerJoinedEvent
   | GameStartedEvent
@@ -137,4 +149,5 @@ export type GameEvent =
   | VoteCastEvent
   | PlayedCardStolenEvent
   | HotPotatoPassedEvent
-  | GameResetEvent;
+  | GameResetEvent
+  | ChoiceSubmittedEvent;

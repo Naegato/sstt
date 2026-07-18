@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { Card, CardRarity } from "@card-game/shared-types";
+import type { Card, CardCatalogEntry, CardRarity } from "@card-game/shared-types";
 
 const CSV_PATH = path.join(import.meta.dir, "../../../../assets/cards/cards.csv");
 
@@ -197,6 +197,11 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
     { type: "ADD_POINTS", amount: 2 },
     { type: "FORCE_RANDOM_CARD_EACH_TURN" },
   ],
+
+  // "À 3, tout le monde joue" : choix simultané secret, pas un vote oui/non —
+  // voir GameState.pendingChoice / submitChoice() dans state.ts.
+  Bataille: [{ type: "START_ROCK_PAPER_SCISSORS" }],
+  Chiffre: [{ type: "START_FINGER_COUNT_CHALLENGE" }],
 };
 
 /**
@@ -236,4 +241,34 @@ function toCard(row: CatalogRow): Card {
 export async function loadPlayableDeck(): Promise<Card[]> {
   const catalog = await loadCatalog();
   return catalog.filter((row) => row.type === "normale" || row.type === "etoile").map(toCard);
+}
+
+/**
+ * Résumé du catalogue pour consultation (`GET /api/cards`) : une entrée par
+ * nom+texte distinct (regroupe les exemplaires identiques, ex: 6 "Bombe" ->
+ * 1 entrée avec `quantity: 6` ; distingue bien les 3 variantes de "Cadeaux",
+ * qui partagent le même nom mais ont un texte différent).
+ */
+export async function loadCardCatalogSummary(): Promise<CardCatalogEntry[]> {
+  const catalog = await loadCatalog();
+  const playable = catalog.filter((row) => row.type === "normale" || row.type === "etoile");
+
+  const grouped = new Map<string, CardCatalogEntry>();
+  for (const row of playable) {
+    const key = `${row.nom}::${row.description}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.quantity += 1;
+      continue;
+    }
+    grouped.set(key, {
+      name: row.nom,
+      rarity: row.type,
+      text: row.description,
+      quantity: 1,
+      automated: toCard(row).effects.length > 0,
+    });
+  }
+
+  return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
 }

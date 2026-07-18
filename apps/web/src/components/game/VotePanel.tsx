@@ -37,24 +37,16 @@ export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePa
     );
   }
 
-  if (pendingVote.mode === "denunciation" && selfPlayerId === pendingVote.accusedId) {
-    return (
-      <div className="vote-panel">
-        <h2>Vote en cours : {labels.title}</h2>
-        <p>
-          {nameOf(pendingVote.accuserId)} te dénonce : « {pendingVote.reason} ». Tu ne votes pas sur ton propre cas. En
-          attente ({votedCount} / {pendingVote.eligiblePlayerIds.length}) ...
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="vote-panel">
       <h2>Vote en cours : {labels.title}</h2>
       {pendingVote.mode === "denunciation" && (
         <p>
-          {nameOf(pendingVote.accuserId)} dénonce {nameOf(pendingVote.accusedId)} : « {pendingVote.reason} »
+          {pendingVote.accuserId === pendingVote.accusedId
+            ? `${nameOf(pendingVote.accuserId)} se dénonce soi-même`
+            : `${nameOf(pendingVote.accuserId)} dénonce ${nameOf(pendingVote.accusedId)}`}{" "}
+          : « {pendingVote.reason} »
+          {selfPlayerId === pendingVote.accusedId && " — tout le monde vote, y compris toi."}
         </p>
       )}
       <p>

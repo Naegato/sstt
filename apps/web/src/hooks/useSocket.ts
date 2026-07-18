@@ -16,13 +16,26 @@ export function useSocket() {
 
     const onStateUpdate = (payload: { state: GameState }) => updateGameState(payload.state);
     const onError = (payload: { message: string }) => setError(payload.message);
+    // Socket.IO reconnecte automatiquement la connexion sous-jacente après une
+    // coupure (réseau, redémarrage du serveur...), mais "rejoindre" une room
+    // socket.io (socket.join côté serveur) ne survit PAS à un nouveau socket.id
+    // — sans ça, le client reste connecté mais ne reçoit plus jamais aucune
+    // mise à jour, silencieusement. On réémet donc JOIN_ROOM à chaque (re)connexion.
+    const onConnect = () => {
+      const { roomId, playerId, playerName } = useGameStore.getState();
+      if (roomId && playerId && playerName) {
+        socket.emit(CLIENT_EVENTS.JOIN_ROOM, { roomId, playerId, playerName });
+      }
+    };
 
     socket.on(SERVER_EVENTS.GAME_STATE_UPDATE, onStateUpdate);
     socket.on(SERVER_EVENTS.ERROR, onError);
+    socket.on("connect", onConnect);
 
     return () => {
       socket.off(SERVER_EVENTS.GAME_STATE_UPDATE, onStateUpdate);
       socket.off(SERVER_EVENTS.ERROR, onError);
+      socket.off("connect", onConnect);
     };
   }, [updateGameState, setError]);
 
@@ -72,6 +85,10 @@ export function useSocket() {
     socketRef.current.emit(CLIENT_EVENTS.RESET_GAME, { roomId });
   };
 
+  const submitChoice = (roomId: string, playerId: string, value: string) => {
+    socketRef.current.emit(CLIENT_EVENTS.SUBMIT_CHOICE, { roomId, playerId, value });
+  };
+
   return {
     joinRoom,
     startGame,
@@ -83,5 +100,6 @@ export function useSocket() {
     denouncePlayer,
     confirmManualAction,
     resetGame,
+    submitChoice,
   };
 }

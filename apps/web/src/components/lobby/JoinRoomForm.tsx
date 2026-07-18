@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,6 +8,7 @@ import { usePlayerId } from "@/hooks/usePlayerId";
 import { useSocket } from "@/hooks/useSocket";
 import { useGameStore } from "@/stores/gameStore";
 import { type JoinRoomInput, joinRoomSchema } from "@/lib/schemas";
+import { getPersistedPlayerName, persistPlayerName } from "@/lib/playerIdentity";
 
 export function JoinRoomForm() {
   const router = useRouter();
@@ -17,14 +19,23 @@ export function JoinRoomForm() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<JoinRoomInput>({
     resolver: zodResolver(joinRoomSchema),
     defaultValues: { roomId: "", playerName: "" },
   });
 
+  // Pré-remplit avec le dernier nom utilisé, mais après le rendu initial (pas
+  // dans defaultValues) pour éviter un mismatch d'hydratation SSR/client.
+  useEffect(() => {
+    const persisted = getPersistedPlayerName();
+    if (persisted) setValue("playerName", persisted);
+  }, [setValue]);
+
   const onSubmit = (data: JoinRoomInput) => {
     if (!playerId) return;
+    persistPlayerName(data.playerName);
     setIdentity(data.roomId, playerId, data.playerName);
     joinRoom(data.roomId, playerId, data.playerName);
     router.push(`/game/${encodeURIComponent(data.roomId)}`);

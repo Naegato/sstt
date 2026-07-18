@@ -4,6 +4,7 @@ import cookie from "@fastify/cookie";
 import { config } from "./config/env.js";
 import { registerSocket } from "./plugins/socket.js";
 import authRoutes from "./routes/auth.js";
+import cardsRoutes from "./routes/cards.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -16,6 +17,7 @@ export async function buildApp() {
   await app.register(cookie);
 
   await app.register(authRoutes, { prefix: "/api/auth" });
+  await app.register(cardsRoutes, { prefix: "/api" });
 
   await registerSocket(app);
 

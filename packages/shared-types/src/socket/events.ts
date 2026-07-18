@@ -11,6 +11,7 @@ export const CLIENT_EVENTS = {
   CONFIRM_MANUAL_ACTION: "game:confirm-manual-action",
   CHALLENGE_ELIMINATION: "game:challenge-elimination",
   RESET_GAME: "game:reset",
+  SUBMIT_CHOICE: "game:submit-choice",
   CHAT: "chat:message",
 } as const;
 

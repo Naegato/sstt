@@ -21,7 +21,9 @@ export type SideEffect =
   | { type: "DENUNCIATION_STARTED"; accuserId: PlayerId; accusedId: PlayerId }
   | { type: "CARD_STOLEN_AND_FORCE_PLAYED"; playerId: PlayerId; targetPlayerId: PlayerId; cardId: CardId }
   | { type: "TURN_DIRECTION_REVERSED" }
-  | { type: "GAME_RESET" };
+  | { type: "GAME_RESET" }
+  | { type: "CHOICE_STARTED"; cardId: CardId }
+  | { type: "CHOICE_MADE"; playerId: PlayerId };
 
 export type EngineResult = {
   state: GameState;

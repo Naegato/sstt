@@ -4,7 +4,10 @@ import { useState } from "react";
 import type { Card as CardType } from "@card-game/shared-types";
 import { useGameStore } from "@/stores/gameStore";
 import { useSocket } from "@/hooks/useSocket";
+import { CardCatalogButton } from "@/components/CardCatalogButton";
 import { CardZoomModal } from "./CardZoomModal";
+import { ChoicePanel } from "./ChoicePanel";
+import { DenunciationPanel } from "./DenunciationPanel";
 import { PlayerHand } from "./PlayerHand";
 import { TurnIndicator } from "./TurnIndicator";
 import { VotePanel } from "./VotePanel";
@@ -24,9 +27,8 @@ export function GameBoard() {
     denouncePlayer,
     confirmManualAction,
     resetGame,
+    submitChoice,
   } = useSocket();
-  const [denounceTargetId, setDenounceTargetId] = useState("");
-  const [denounceReason, setDenounceReason] = useState("");
   const [confirmedCardId, setConfirmedCardId] = useState<string | null>(null);
   // Carte affichée en grand : soit en lecture seule (peek sur une carte posée,
   // pas de confirmAction), soit avec confirmation (carte en main, sur le point
@@ -156,7 +158,10 @@ export function GameBoard() {
     <div className="game-board">
       {errorMessage && <p className="game-board__error">{errorMessage}</p>}
 
-      <h1>Room {roomId}</h1>
+      <div className="game-board__header">
+        <h1>Room {roomId}</h1>
+        <CardCatalogButton />
+      </div>
 
       {gameState.phase === "lobby" && (
         <div className="game-board__lobby">
@@ -230,7 +235,7 @@ export function GameBoard() {
             </div>
           )}
 
-          {self && gameState.phase === "playing" && !gameState.pendingVote && (
+          {self && gameState.phase === "playing" && !gameState.pendingVote && !gameState.pendingChoice && (
             <div className="self-zone">
               {isTargeting && (
                 <p className="game-board__targeting-hint">
@@ -272,51 +277,33 @@ export function GameBoard() {
         />
       )}
 
-      {/* Dénonciation : pour les cartes manuelles (texte affiché, pas d'automatisation)
-          non respectées — n'importe quel joueur en jeu peut accuser un autre à tout
-          moment ; ouvre un vote à majorité pour le reste de la table (voir
-          ELIMINATION_CHALLENGED / startDenunciationVote côté serveur). */}
-      {self && gameState.phase === "playing" && !gameState.pendingVote && !self.isEliminated && otherAlivePlayers.length > 0 && (
-        <div className="game-board__denounce">
-          <h2>Dénoncer un joueur</h2>
-          <label>
-            Qui ?{" "}
-            <select
-              className="input-sticker"
-              value={denounceTargetId}
-              onChange={(e) => setDenounceTargetId(e.target.value)}
-            >
-              <option value="">Choisir...</option>
-              {otherAlivePlayers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Pourquoi ?{" "}
-            <input
-              className="input-sticker"
-              value={denounceReason}
-              onChange={(e) => setDenounceReason(e.target.value)}
-              placeholder="ex: n'a pas fait le geste demandé"
-            />
-          </label>
-          <button
-            type="button"
-            className="btn-sticker"
-            disabled={!denounceTargetId || !denounceReason.trim()}
-            onClick={() => {
-              denouncePlayer(roomId, self.id, denounceTargetId, denounceReason.trim());
-              setDenounceTargetId("");
-              setDenounceReason("");
-            }}
-          >
-            Dénoncer
-          </button>
-        </div>
+      {/* Choix simultané à options multiples (Bataille, Chiffre) — voir
+          GameState.pendingChoice, distinct de pendingVote (pas juste oui/non). */}
+      {gameState.phase === "playing" && gameState.pendingChoice && (
+        <ChoicePanel
+          pendingChoice={gameState.pendingChoice}
+          selfPlayerId={playerId}
+          onChoose={(value) => self && submitChoice(roomId, self.id, value)}
+        />
       )}
+
+      {/* Dénonciation : uniquement pour les cartes manuelles "règle en vigueur"
+          (Moi, Zombies...) réellement posées sur la table — pas de dénonciation
+          générique sans carte à dénoncer. Un bouton par carte active ; ouvre un
+          vote à majorité pour le reste de la table (voir ELIMINATION_CHALLENGED
+          / startDenunciationVote côté serveur). */}
+      {self &&
+        gameState.phase === "playing" &&
+        !gameState.pendingVote &&
+        !gameState.pendingChoice &&
+        !self.isEliminated && (
+          <DenunciationPanel
+            players={gameState.players}
+            selfId={playerId}
+            openReflexCardId={gameState.openReflexCardId}
+            onDenounce={(targetId, reason) => denouncePlayer(roomId, self.id, targetId, reason)}
+          />
+        )}
 
       {self && gameState.phase === "playing" && needsManualConfirmation && lastManualCardToConfirm && (
         <div className="game-board__manual-confirm">
@@ -336,7 +323,7 @@ export function GameBoard() {
         </div>
       )}
 
-      {self && gameState.phase === "playing" && !gameState.pendingVote && mustPassHotPotato && (
+      {self && gameState.phase === "playing" && !gameState.pendingVote && !gameState.pendingChoice && mustPassHotPotato && (
         <div className="game-board__warning">
           <p>Tu as la Patate chaude ! Passe-la avant de jouer une carte, sinon tu seras éliminé.</p>
           <button type="button" className="btn-sticker" onClick={() => passHotPotato(roomId, self.id)}>
