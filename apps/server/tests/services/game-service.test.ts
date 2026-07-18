@@ -104,6 +104,7 @@ describe("GameService", () => {
       "WIN_ALL_ALIVE_PLAYERS",
       "GIVE_CARDS_TO_TARGET",
       "LOCK_DRAW_PILE",
+      "START_NOSE_COUNTDOWN", // ouvre pendingNoseCountdown, bloque endTurn (NOSE_COUNTDOWN_PENDING) comme les votes/choix ci-dessus
     ]);
     const cardToPlay = p1.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)));
     if (!cardToPlay) return; // hand entièrement composée de cartes bloquantes, cas trop rare pour être testé ici
