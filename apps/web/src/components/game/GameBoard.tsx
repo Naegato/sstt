@@ -4,10 +4,10 @@ import { useState } from "react";
 import type { Card as CardType } from "@card-game/shared-types";
 import { useGameStore } from "@/stores/gameStore";
 import { useSocket } from "@/hooks/useSocket";
-import { CardCatalogButton } from "@/components/CardCatalogButton";
 import { CardZoomModal } from "./CardZoomModal";
 import { ChoicePanel } from "./ChoicePanel";
 import { DenunciationPanel } from "./DenunciationPanel";
+import { NoseCountdownPanel } from "./NoseCountdownPanel";
 import { PlayerHand } from "./PlayerHand";
 import { TurnIndicator } from "./TurnIndicator";
 import { VotePanel } from "./VotePanel";
@@ -28,6 +28,7 @@ export function GameBoard() {
     confirmManualAction,
     resetGame,
     submitChoice,
+    toggleNoseTouch,
   } = useSocket();
   const [confirmedCardId, setConfirmedCardId] = useState<string | null>(null);
   // Carte affichée en grand : soit en lecture seule (peek sur une carte posée,
@@ -158,10 +159,7 @@ export function GameBoard() {
     <div className="game-board">
       {errorMessage && <p className="game-board__error">{errorMessage}</p>}
 
-      <div className="game-board__header">
-        <h1>Room {roomId}</h1>
-        <CardCatalogButton />
-      </div>
+      <h1>Room {roomId}</h1>
 
       {gameState.phase === "lobby" && (
         <div className="game-board__lobby">
@@ -235,7 +233,11 @@ export function GameBoard() {
             </div>
           )}
 
-          {self && gameState.phase === "playing" && !gameState.pendingVote && !gameState.pendingChoice && (
+          {self &&
+            gameState.phase === "playing" &&
+            !gameState.pendingVote &&
+            !gameState.pendingChoice &&
+            !gameState.pendingNoseCountdown && (
             <div className="self-zone">
               {isTargeting && (
                 <p className="game-board__targeting-hint">
@@ -287,6 +289,18 @@ export function GameBoard() {
         />
       )}
 
+      {gameState.phase === "playing" && gameState.pendingNoseCountdown && (
+        <NoseCountdownPanel
+          pendingNoseCountdown={gameState.pendingNoseCountdown}
+          card={gameState.players
+            .find((p) => p.id === gameState.pendingNoseCountdown!.holderId)
+            ?.playedCards.find((c) => c.id === gameState.pendingNoseCountdown!.cardId)}
+          players={gameState.players}
+          selfPlayerId={playerId}
+          onToggle={(touching) => self && toggleNoseTouch(roomId, self.id, touching)}
+        />
+      )}
+
       {/* Dénonciation : uniquement pour les cartes manuelles "règle en vigueur"
           (Moi, Zombies...) réellement posées sur la table — pas de dénonciation
           générique sans carte à dénoncer. Un bouton par carte active ; ouvre un
@@ -296,6 +310,7 @@ export function GameBoard() {
         gameState.phase === "playing" &&
         !gameState.pendingVote &&
         !gameState.pendingChoice &&
+        !gameState.pendingNoseCountdown &&
         !self.isEliminated && (
           <DenunciationPanel
             players={gameState.players}

@@ -20,8 +20,6 @@ const DENUNCIATION_RULES: Record<string, string> = {
   Zombies: "n’a pas dit « AAAH ! Des zombies ! » à son tour (et n’a pas de banane)",
   "Index réflexe": "a pointé du doigt un joueur ou une carte",
   "Génération Y": "a enfreint l’interdiction choisie (rire, téléphone, ou « du coup »)",
-  "Nez à nez": "n’a pas touché son nez à temps",
-  "Pied de nez": "touchait encore son nez au mauvais moment",
 };
 
 /**
@@ -31,7 +29,7 @@ const DENUNCIATION_RULES: Record<string, string> = {
  * en jeu. Doit rester synchronisée avec `REFLEX_CARD_NAMES` côté moteur
  * (`apps/server/src/engine/cards.ts`).
  */
-const REFLEX_CARD_NAMES = new Set(["Index réflexe", "Nez à nez", "Pied de nez"]);
+const REFLEX_CARD_NAMES = new Set(["Index réflexe"]);
 
 type ActiveRuleCard = {
   cardId: string;

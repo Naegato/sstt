@@ -136,6 +136,28 @@ export type ChoiceSubmittedEvent = BaseEvent & {
   value: string;
 };
 
+/**
+ * Un joueur bascule l'état de son bouton "nez" pendant un décompte en cours
+ * (voir GameState.pendingNoseCountdown — Nez à nez, Pied de nez). Librement
+ * modifiable plusieurs fois avant la résolution, contrairement à un vote/choix.
+ */
+export type NoseTouchToggledEvent = BaseEvent & {
+  type: "NOSE_TOUCH_TOGGLED";
+  playerId: PlayerId;
+  touching: boolean;
+};
+
+/**
+ * Résout le décompte en cours (voir GameState.pendingNoseCountdown), en
+ * lisant l'état `touching` de chaque joueur éligible tel qu'il est au moment
+ * de cet event. Contrairement aux votes/choix, jamais déclenché par une
+ * action de joueur : dispatché côté GameService via un minuteur, une fois
+ * les `seconds` du décompte écoulées (le moteur pur ne connaît jamais l'horloge).
+ */
+export type NoseCountdownResolvedEvent = BaseEvent & {
+  type: "NOSE_COUNTDOWN_RESOLVED";
+};
+
 export type GameEvent =
   | PlayerJoinedEvent
   | GameStartedEvent
@@ -150,4 +172,6 @@ export type GameEvent =
   | PlayedCardStolenEvent
   | HotPotatoPassedEvent
   | GameResetEvent
-  | ChoiceSubmittedEvent;
+  | ChoiceSubmittedEvent
+  | NoseTouchToggledEvent
+  | NoseCountdownResolvedEvent;

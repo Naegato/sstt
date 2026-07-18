@@ -89,6 +89,10 @@ export function useSocket() {
     socketRef.current.emit(CLIENT_EVENTS.SUBMIT_CHOICE, { roomId, playerId, value });
   };
 
+  const toggleNoseTouch = (roomId: string, playerId: string, touching: boolean) => {
+    socketRef.current.emit(CLIENT_EVENTS.TOGGLE_NOSE_TOUCH, { roomId, playerId, touching });
+  };
+
   return {
     joinRoom,
     startGame,
@@ -101,5 +105,6 @@ export function useSocket() {
     confirmManualAction,
     resetGame,
     submitChoice,
+    toggleNoseTouch,
   };
 }

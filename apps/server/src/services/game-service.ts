@@ -7,7 +7,16 @@ import type { RoomManager } from "./room-manager.js";
 export class GameService {
   private eventLog = new Map<RoomId, GameEvent[]>();
 
-  constructor(private roomManager: RoomManager) {}
+  /**
+   * Appelé après chaque résolution "spontanée" (déclenchée par un minuteur,
+   * pas par un event socket entrant) pour que socket.ts diffuse le nouvel état
+   * à la room — voir `scheduleNoseCountdownResolution`. Optionnel pour ne pas
+   * casser les tests qui construisent un `GameService` sans plugin socket.
+   */
+  constructor(
+    private roomManager: RoomManager,
+    private onSpontaneousUpdate?: (roomId: RoomId, result: EngineResult) => void,
+  ) {}
 
   handleEvent(roomId: RoomId, event: GameEvent): EngineResult {
     const room = this.roomManager.getOrCreateRoom(roomId);
@@ -72,6 +81,13 @@ export class GameService {
       stolenCardId,
       timestamp: Date.now(),
     });
+
+    // "Nez à nez"/"Pied de nez" : le moteur pur ne connaît jamais l'horloge —
+    // le minuteur qui déclenchera la résolution automatique vit ici, côté service.
+    const noseCountdownStarted = result.sideEffects.find((e) => e.type === "NOSE_COUNTDOWN_STARTED");
+    if (noseCountdownStarted && noseCountdownStarted.type === "NOSE_COUNTDOWN_STARTED") {
+      this.scheduleNoseCountdownResolution(roomId, cardId, noseCountdownStarted.seconds);
+    }
 
     // "Rejouez un tour" (Bombe, Tricheur...) : le même joueur repioche immédiatement,
     // conformément à la règle officielle (un tour = piocher puis jouer).
@@ -138,6 +154,29 @@ export class GameService {
   /** Choix simultané secret en cours (Bataille, Chiffre) — voir GameState.pendingChoice. */
   submitChoice(roomId: RoomId, playerId: PlayerId, value: string): EngineResult {
     return this.handleEvent(roomId, { type: "CHOICE_SUBMITTED", playerId, value, timestamp: Date.now() });
+  }
+
+  /** Bascule le bouton "nez" d'un joueur pendant un décompte en cours (Nez à nez, Pied de nez) — voir GameState.pendingNoseCountdown. */
+  toggleNoseTouch(roomId: RoomId, playerId: PlayerId, touching: boolean): EngineResult {
+    return this.handleEvent(roomId, { type: "NOSE_TOUCH_TOGGLED", playerId, touching, timestamp: Date.now() });
+  }
+
+  /**
+   * Programme la résolution automatique de "Nez à nez"/"Pied de nez" après
+   * `seconds` secondes — le moteur pur ne connaît jamais l'horloge, donc ce
+   * minuteur vit ici. Vérifie que le décompte en cours est toujours bien celui
+   * qui l'a programmé (via `cardId`) avant de résoudre, pour ignorer un
+   * minuteur devenu obsolète (ex: partie réinitialisée entretemps).
+   */
+  private scheduleNoseCountdownResolution(roomId: RoomId, cardId: CardId, seconds: number): void {
+    setTimeout(() => {
+      const room = this.roomManager.getRoom(roomId);
+      if (!room || room.state.pendingNoseCountdown?.cardId !== cardId) {
+        return;
+      }
+      const result = this.handleEvent(roomId, { type: "NOSE_COUNTDOWN_RESOLVED", timestamp: Date.now() });
+      this.onSpontaneousUpdate?.(roomId, result);
+    }, seconds * 1000);
   }
 
   private drawForCurrentPlayer(roomId: RoomId, result: EngineResult): EngineResult {

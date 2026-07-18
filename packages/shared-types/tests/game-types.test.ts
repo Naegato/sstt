@@ -42,6 +42,7 @@ describe("GameState models N players correctly", () => {
       turnDirection: 1,
       pendingChoice: null,
       openReflexCardId: null,
+      pendingNoseCountdown: null,
     };
 
     expect(state.players.length).toBe(MAX_PLAYERS);

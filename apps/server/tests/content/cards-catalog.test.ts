@@ -268,4 +268,12 @@ describe("loadPlayableDeck", () => {
     const card = deck.find((c) => c.name === "Chiffre");
     expect(card?.effects).toEqual([{ type: "START_FINGER_COUNT_CHALLENGE" }]);
   });
+
+  it("branche START_NOSE_COUNTDOWN sur \"Nez à nez\" et \"Pied de nez\"", async () => {
+    const deck = await loadPlayableDeck();
+    const nezANez = deck.find((c) => c.name === "Nez à nez");
+    const piedDeNez = deck.find((c) => c.name === "Pied de nez");
+    expect(nezANez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }]);
+    expect(piedDeNez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }]);
+  });
 });

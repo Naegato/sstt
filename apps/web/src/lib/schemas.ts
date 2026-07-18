@@ -21,6 +21,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const registerSchema = z.object({
   email: z.string().trim().min(1, "L'email est requis.").email("Adresse email invalide."),
+  firstName: z.string().trim().min(1, "Le prénom est requis.").max(40, "40 caractères max."),
+  lastName: z.string().trim().min(1, "Le nom est requis.").max(40, "40 caractères max."),
   displayName: z.string().trim().min(1, "Choisis un nom affiché.").max(40, "40 caractères max."),
   password: z.string().min(8, "8 caractères minimum."),
 });

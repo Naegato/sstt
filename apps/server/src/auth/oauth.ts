@@ -4,6 +4,9 @@ export type OAuthProfile = {
   providerAccountId: string;
   email: string;
   displayName: string;
+  /** Fournis par Google (given_name/family_name) ; jamais par Discord, qui n'a pas d'équivalent. */
+  firstName?: string;
+  lastName?: string;
 };
 
 type ProviderConfig = {
@@ -88,8 +91,20 @@ async function fetchGoogleProfile(accessToken: string): Promise<OAuthProfile> {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) throw new Error(`Récupération du profil Google échouée : ${response.status}`);
-  const data = (await response.json()) as { id: string; email: string; name: string };
-  return { providerAccountId: data.id, email: data.email, displayName: data.name };
+  const data = (await response.json()) as {
+    id: string;
+    email: string;
+    name: string;
+    given_name?: string;
+    family_name?: string;
+  };
+  return {
+    providerAccountId: data.id,
+    email: data.email,
+    displayName: data.name,
+    firstName: data.given_name,
+    lastName: data.family_name,
+  };
 }
 
 export async function fetchOAuthProfile(name: OAuthProviderName, code: string): Promise<OAuthProfile> {

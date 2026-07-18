@@ -227,7 +227,21 @@ export type AutomatedEffect =
    * nombre premier, l'auteur de la carte gagne immédiatement la partie ;
    * sinon rien ne se passe. Voir `GameState.pendingChoice`.
    */
-  | { type: "START_FINGER_COUNT_CHALLENGE" };
+  | { type: "START_FINGER_COUNT_CHALLENGE" }
+  /**
+   * (Nez à nez / Pied de nez) Lance un décompte synchronisé de `seconds`
+   * secondes après lequel chaque joueur en jeu est éliminé ou non selon qu'il
+   * touche encore son nez à cet instant (`GameState.pendingNoseCountdown.touching`,
+   * mis à jour librement pendant le décompte via l'event `NOSE_TOUCH_TOGGLED`).
+   * `eliminateIfTouching: false` (Nez à nez) élimine ceux qui NE touchent PAS
+   * leur nez au terme du décompte ; `true` (Pied de nez) élimine ceux qui
+   * touchent ENCORE leur nez, porteur inclus (le texte dit "tout joueur", pas
+   * "tout autre joueur"). Contrairement aux votes/choix (résolus dès que tous
+   * les joueurs éligibles ont répondu), la résolution est déclenchée par un
+   * minuteur côté `GameService` (le moteur pur ne connaît jamais l'horloge),
+   * via l'event `NOSE_COUNTDOWN_RESOLVED`.
+   */
+  | { type: "START_NOSE_COUNTDOWN"; seconds: number; eliminateIfTouching: boolean };
 
 export type Card = {
   id: CardId;
@@ -341,6 +355,22 @@ export type PendingChoice =
       choices: Partial<Record<PlayerId, 1 | 2 | 3 | 4 | 5>>;
     };
 
+/**
+ * Décompte synchronisé en cours (Nez à nez / Pied de nez) — voir
+ * `START_NOSE_COUNTDOWN`. `touching` reflète l'état en direct de chaque
+ * joueur (bouton "nez" pressé ou non), librement modifiable jusqu'à la
+ * résolution ; absent d'une entrée = pas encore touché (traité comme `false`
+ * à la résolution).
+ */
+export type PendingNoseCountdown = {
+  cardId: CardId;
+  holderId: PlayerId;
+  seconds: number;
+  eliminateIfTouching: boolean;
+  eligiblePlayerIds: PlayerId[];
+  touching: Partial<Record<PlayerId, boolean>>;
+};
+
 export type GameState = {
   roomId: RoomId;
   phase: GamePhase;
@@ -397,6 +427,8 @@ export type GameState = {
   turnDirection: 1 | -1;
   /** Choix simultané à options multiples en cours (Bataille, Chiffre) — voir `PendingChoice`. Bloque la fin de tour comme `pendingVote`. */
   pendingChoice: PendingChoice | null;
+  /** Décompte synchronisé en cours (Nez à nez, Pied de nez) — voir `PendingNoseCountdown`. Bloque la fin de tour comme `pendingVote`/`pendingChoice`. */
+  pendingNoseCountdown: PendingNoseCountdown | null;
   /**
    * Id de la dernière carte manuelle "réflexe instantané" jouée (ex: Index
    * réflexe, Nez à nez, Pied de nez) tant qu'elle reste dénonçable — contrairement

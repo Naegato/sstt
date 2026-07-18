@@ -1,0 +1,74 @@
+services:
+  server:
+    image: ghcr.io/naegato/sstt/server:latest
+    ports:
+      - "3011:3001"
+    environment:
+      PORT: 3001
+      ALLOWED_ORIGINS: https://card-game.wiatr.fr
+      WEB_ORIGIN: https://card-game.wiatr.fr
+    # Les secrets Docker ne sont jamais exposés comme variables d'env
+    # directement (juste montés en fichiers sous /run/secrets/) — ce wrapper
+    # les lit une fois au démarrage plutôt que de modifier config/env.ts pour
+    # supporter des variantes _FILE, cohérent avec le principe "pas de
+    # sur-ingénierie" du projet pour ce cas d'usage ponctuel.
+    command:
+      - sh
+      - -c
+      - >
+        export DATABASE_URL="postgres://card_game:$$(cat /run/secrets/db_password)@postgres:5432/card_game";
+        export JWT_SECRET="$$(cat /run/secrets/jwt_secret)";
+        exec bun run dist/index.js
+    secrets:
+      - db_password
+      - jwt_secret
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - card-game
+
+  web:
+    image: ghcr.io/naegato/sstt/web:latest
+    ports:
+      - "3010:3000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - card-game
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: card_game
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: card_game
+    secrets:
+      - db_password
+    volumes:
+      - card_game_postgres_data:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+    networks:
+      - card-game
+
+secrets:
+  db_password:
+    external: true
+  jwt_secret:
+    external: true
+
+volumes:
+  card_game_postgres_data:
+
+networks:
+  card-game:
+    external: true

@@ -4,7 +4,13 @@ import { db } from "./client.js";
 import { oauthAccounts, users } from "./schema.js";
 
 function toPublicUser(user: typeof users.$inferSelect): PublicUser {
-  return { id: user.id, email: user.email, displayName: user.displayName };
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  };
 }
 
 export async function findUserByEmail(email: string) {
@@ -21,8 +27,10 @@ export async function createUserWithPassword(
   email: string,
   passwordHash: string,
   displayName: string,
+  firstName: string,
+  lastName: string,
 ): Promise<PublicUser> {
-  const [user] = await db.insert(users).values({ email, passwordHash, displayName }).returning();
+  const [user] = await db.insert(users).values({ email, passwordHash, displayName, firstName, lastName }).returning();
   if (!user) throw new Error("Échec de la création du compte");
   return toPublicUser(user);
 }
@@ -43,6 +51,9 @@ export async function findOrCreateOAuthUser(params: {
   providerAccountId: string;
   email: string;
   displayName: string;
+  /** Dérivés du profil OAuth quand le provider les fournit (Google), `undefined` sinon (Discord). */
+  firstName?: string;
+  lastName?: string;
 }): Promise<PublicUser> {
   const existingByOAuth = await findUserByOAuthAccount(params.provider, params.providerAccountId);
   if (existingByOAuth) return existingByOAuth;
@@ -53,7 +64,13 @@ export async function findOrCreateOAuthUser(params: {
     : await (async () => {
         const [created] = await db
           .insert(users)
-          .values({ email: params.email, displayName: params.displayName, passwordHash: null })
+          .values({
+            email: params.email,
+            displayName: params.displayName,
+            passwordHash: null,
+            firstName: params.firstName ?? null,
+            lastName: params.lastName ?? null,
+          })
           .returning();
         if (!created) throw new Error("Échec de la création du compte");
         return toPublicUser(created);

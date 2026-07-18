@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import localFont from "next/font/local";
+import { getCurrentUser } from "@/lib/session";
+import { Header } from "@/components/Header";
 import "./globals.css";
 
 const baloo = localFont({
@@ -19,10 +21,15 @@ export const metadata = {
   description: "Clone numérique du party game de cartes chaotique",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const user = await getCurrentUser();
+
   return (
     <html lang="fr" className={`${baloo.variable} ${workSans.variable}`}>
-      <body>{children}</body>
+      <body>
+        <Header user={user} />
+        {children}
+      </body>
     </html>
   );
 }

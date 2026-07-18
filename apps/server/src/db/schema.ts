@@ -6,6 +6,14 @@ export const users = pgTable("users", {
   /** Null si le compte n'a été créé que via OAuth (pas de mot de passe local). */
   passwordHash: text("password_hash"),
   displayName: text("display_name").notNull(),
+  /**
+   * Requis à l'inscription email/mot de passe. Pour les comptes OAuth : dérivés
+   * automatiquement de Google (given_name/family_name) quand disponibles, sinon
+   * `null` (Discord ne fournit pas de prénom/nom séparés) — pas de page profil
+   * pour les renseigner après coup pour l'instant.
+   */
+  firstName: text("first_name"),
+  lastName: text("last_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

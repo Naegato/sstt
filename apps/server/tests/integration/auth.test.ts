@@ -25,7 +25,16 @@ describe("Routes /api/auth", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/register",
-      payload: { email, password: "short", displayName: "Test" },
+      payload: { email, password: "short", displayName: "Test", firstName: "Test", lastName: "User" },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("refuse l'inscription sans prénom ni nom", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { email, password: "supersecret123", displayName: "Test" },
     });
     expect(response.statusCode).toBe(400);
   });
@@ -34,13 +43,15 @@ describe("Routes /api/auth", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/register",
-      payload: { email, password: "supersecret123", displayName: "Test" },
+      payload: { email, password: "supersecret123", displayName: "Test", firstName: "Test", lastName: "User" },
     });
 
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body.user.email).toBe(email);
     expect(body.user.displayName).toBe("Test");
+    expect(body.user.firstName).toBe("Test");
+    expect(body.user.lastName).toBe("User");
     expect(body.user.passwordHash).toBeUndefined();
 
     const setCookie = response.headers["set-cookie"];
@@ -52,7 +63,7 @@ describe("Routes /api/auth", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/auth/register",
-      payload: { email, password: "supersecret123", displayName: "Test 2" },
+      payload: { email, password: "supersecret123", displayName: "Test 2", firstName: "Test", lastName: "User" },
     });
     expect(response.statusCode).toBe(409);
   });

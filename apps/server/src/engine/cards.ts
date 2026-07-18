@@ -19,6 +19,7 @@ import {
   startCakeOrGraveVote,
   startDeathOrTchiVote,
   startFingerCountChallenge,
+  startNoseCountdown,
   startRockPaperScissors,
   startSimultaneousVote,
   updatePlayer,
@@ -32,8 +33,10 @@ import type { EngineResult, SideEffect } from "./types.js";
  * où la carte est jouée, pas plusieurs tours après — voir `GameState.openReflexCardId`,
  * fermé à la fin du tour dans `index.ts`. Liste fermée, même principe que les
  * autres listes par nom déjà utilisées dans le moteur (ex: "Bombe" dans state.ts).
+ * "Nez à nez"/"Pied de nez" en sont sorties une fois automatisées via
+ * `START_NOSE_COUNTDOWN` (décompte + résolution automatique, plus besoin de dénonciation).
  */
-const REFLEX_CARD_NAMES = new Set(["Index réflexe", "Nez à nez", "Pied de nez"]);
+const REFLEX_CARD_NAMES = new Set(["Index réflexe"]);
 
 function removeFromHand(state: GameState, playerId: PlayerId, cardId: string): GameState {
   return updatePlayer(state, playerId, (p) => ({
@@ -360,6 +363,11 @@ function applyOneEffect(
     case "START_FINGER_COUNT_CHALLENGE": {
       const next = startFingerCountChallenge(state, card.id, playerId);
       return { state: next, sideEffects: [{ type: "CHOICE_STARTED", cardId: card.id }] };
+    }
+
+    case "START_NOSE_COUNTDOWN": {
+      const next = startNoseCountdown(state, card.id, playerId, effect.seconds, effect.eliminateIfTouching);
+      return { state: next, sideEffects: [{ type: "NOSE_COUNTDOWN_STARTED", seconds: effect.seconds }] };
     }
 
     // Déjà géré par le placement par défaut dans playCard().

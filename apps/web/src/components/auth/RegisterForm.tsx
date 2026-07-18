@@ -24,13 +24,13 @@ export function RegisterForm() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { email: "", displayName: "", password: "" },
+    defaultValues: { email: "", firstName: "", lastName: "", displayName: "", password: "" },
   });
 
   const onSubmit = async (data: RegisterInput) => {
     setServerError(null);
     try {
-      await registerAccount(data.email, data.password, data.displayName);
+      await registerAccount(data.email, data.password, data.displayName, data.firstName, data.lastName);
       router.push("/");
       router.refresh();
     } catch (err) {
@@ -45,6 +45,16 @@ export function RegisterForm() {
           <span>Email</span>
           <input className="input-sticker" type="email" {...register("email")} />
           {errors.email && <span className="sticker-form__error">{errors.email.message}</span>}
+        </label>
+        <label className="sticker-form__field">
+          <span>Prénom</span>
+          <input className="input-sticker" {...register("firstName")} />
+          {errors.firstName && <span className="sticker-form__error">{errors.firstName.message}</span>}
+        </label>
+        <label className="sticker-form__field">
+          <span>Nom</span>
+          <input className="input-sticker" {...register("lastName")} />
+          {errors.lastName && <span className="sticker-form__error">{errors.lastName.message}</span>}
         </label>
         <label className="sticker-form__field">
           <span>Nom affiché</span>

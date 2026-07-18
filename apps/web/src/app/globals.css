@@ -56,6 +56,68 @@ button {
   font-family: inherit;
 }
 
+/* ---------- En-tête commune (toutes les pages) ---------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.35);
+}
+
+.site-header__brand {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--text-on-board);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.site-header__actions .btn-sticker {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+.site-header__account {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.site-header__account strong {
+  color: var(--text-on-board);
+}
+
+.site-header__account a {
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.site-header__account .btn-sticker {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+}
+
 /* ---------- Sticker logo (page d'accueil) ---------- */
 
 .logo-sticker {
@@ -1045,18 +1107,6 @@ button {
   margin-top: 0.5rem;
 }
 
-.game-board__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.game-board__header h1 {
-  margin: 0;
-}
-
 .catalog-modal__panel {
   width: min(900px, 92vw);
   max-height: 85vh;
@@ -1122,4 +1172,70 @@ button {
   font-size: 0.72rem;
   font-weight: 800;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Décompte synchronisé (Nez à nez, Pied de nez) ---------- */
+
+.nose-countdown__card-pin {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 90;
+  width: min(220px, 40vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  border-radius: 14px;
+  padding: 0.65rem;
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.5);
+}
+
+.nose-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.nose-countdown__timer {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  font-size: 4rem;
+  line-height: 1;
+  color: var(--accent-gold);
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.nose-countdown__nose-btn {
+  font-size: 1.1rem;
+}
+
+.nose-countdown__nose-btn--active {
+  background: var(--accent-zone);
+  color: var(--accent-zone-ink);
+}
+
+.nose-countdown__players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.nose-countdown__player {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+}
+
+.nose-countdown__player--touching {
+  background: var(--accent-zone);
+  color: var(--accent-zone-ink);
+  font-weight: 700;
 }

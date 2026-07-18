@@ -21,6 +21,7 @@ export function createInitialState(roomId: RoomId): GameState {
     turnDirection: 1,
     pendingChoice: null,
     openReflexCardId: null,
+    pendingNoseCountdown: null,
   };
 }
 
@@ -649,6 +650,58 @@ export function submitChoice(state: GameState, playerId: PlayerId, value: string
     return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };
   }
   return { state: next, sideEffects };
+}
+
+/** Ouvre "Nez à nez"/"Pied de nez" : tous les joueurs en jeu (porteur inclus) peuvent basculer leur bouton "nez" jusqu'à la résolution par minuteur. */
+export function startNoseCountdown(
+  state: GameState,
+  cardId: CardId,
+  holderId: PlayerId,
+  seconds: number,
+  eliminateIfTouching: boolean,
+): GameState {
+  const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
+  return {
+    ...state,
+    pendingNoseCountdown: { cardId, holderId, seconds, eliminateIfTouching, eligiblePlayerIds, touching: {} },
+  };
+}
+
+/** Bascule l'état "touche son nez" d'un joueur pendant le décompte — librement modifiable, aucune résolution ici. */
+export function toggleNoseTouch(state: GameState, playerId: PlayerId, touching: boolean): EngineResult {
+  if (!state.pendingNoseCountdown) {
+    throw new GameLogicError("Aucun décompte en cours", "NO_PENDING_NOSE_COUNTDOWN", { playerId });
+  }
+  if (!state.pendingNoseCountdown.eligiblePlayerIds.includes(playerId)) {
+    throw new GameLogicError("Ce joueur n'est pas concerné par ce décompte", "NOT_ELIGIBLE_FOR_NOSE_COUNTDOWN", {
+      playerId,
+    });
+  }
+  const pendingNoseCountdown = {
+    ...state.pendingNoseCountdown,
+    touching: { ...state.pendingNoseCountdown.touching, [playerId]: touching },
+  };
+  return { state: { ...state, pendingNoseCountdown }, sideEffects: [{ type: "NOSE_TOUCH_CHANGED", playerId, touching }] };
+}
+
+/**
+ * Résout le décompte en cours à partir de l'état `touching` actuel — jamais
+ * déclenché par une action de joueur, uniquement par le minuteur de
+ * `GameService` (voir `NoseCountdownResolvedEvent`). Élimine ceux qui NE
+ * touchent PAS leur nez (Nez à nez) ou ceux qui touchent ENCORE leur nez,
+ * porteur inclus (Pied de nez) selon `eliminateIfTouching`.
+ */
+export function resolveNoseCountdown(state: GameState): EngineResult {
+  if (!state.pendingNoseCountdown) {
+    throw new GameLogicError("Aucun décompte en cours", "NO_PENDING_NOSE_COUNTDOWN", {});
+  }
+  const { eligiblePlayerIds, touching, eliminateIfTouching } = state.pendingNoseCountdown;
+  const toEliminate = eligiblePlayerIds.filter((id) => {
+    const isTouching = touching[id] ?? false;
+    return eliminateIfTouching ? isTouching : !isTouching;
+  });
+  const next: GameState = { ...state, pendingNoseCountdown: null };
+  return eliminateSpecificPlayers(next, toEliminate);
 }
 
 /**

@@ -1,0 +1,104 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/naegato/sstt
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # apps/server/tests/integration/auth.test.ts tourne contre une vraie
+    # Postgres (voir docker-compose.yml en local) — même exigence ici.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: card_game
+          POSTGRES_PASSWORD: card_game
+          POSTGRES_DB: card_game
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U card_game"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://card_game:card_game@localhost:5432/card_game
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Run database migrations
+        run: bun run db:migrate
+        working-directory: apps/server
+
+      - name: Test
+        run: bun run test
+
+  build-and-deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: naegato
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/server:latest
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/server:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}/server:buildcache,mode=max
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/web:latest
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/web:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}/web:buildcache,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api-card-game.wiatr.fr
+            NEXT_PUBLIC_SOCKET_URL=https://api-card-game.wiatr.fr
+
+      - name: Ensure docker secrets exist
+        run: |
+          docker secret inspect jwt_secret >/dev/null 2>&1 || echo "${{ secrets.JWT_SECRET }}" | docker secret create jwt_secret -
+          docker secret inspect db_password >/dev/null 2>&1 || echo "${{ secrets.DB_PASSWORD }}" | docker secret create db_password -
+
+      - name: Ensure network exists
+        run: docker network inspect card-game >/dev/null 2>&1 || docker network create --driver overlay --attachable card-game
+
+      - name: Deploy stack
+        run: docker stack deploy -c stack.yml card-game --with-registry-auth

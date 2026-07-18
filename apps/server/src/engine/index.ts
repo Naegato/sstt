@@ -14,10 +14,12 @@ import {
   isDrawPileLocked,
   passHotPotato,
   resetGameToLobby,
+  resolveNoseCountdown,
   startDenunciationVote,
   startGame,
   stealPlayedCard,
   submitChoice,
+  toggleNoseTouch,
 } from "./state.js";
 import { advanceTurn } from "./turns.js";
 import type { EngineResult, SideEffect } from "./types.js";
@@ -81,6 +83,13 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
           { choiceMode: state.pendingChoice.mode },
         );
       }
+      if (state.pendingNoseCountdown) {
+        throw new GameLogicError(
+          "Un décompte est en cours, impossible de terminer le tour avant sa résolution",
+          "NOSE_COUNTDOWN_PENDING",
+          { cardId: state.pendingNoseCountdown.cardId },
+        );
+      }
       // La fenêtre de réaction "Gros nul !" et celle de dénonciation d'une carte
       // réflexe instantanée se referment toutes les deux à la fin du tour courant.
       const stateWithoutBatch = clearOpenReflexWindow(clearEliminationBatch(state));
@@ -138,6 +147,10 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
     }
     case "CHOICE_SUBMITTED":
       return submitChoice(state, event.playerId, event.value);
+    case "NOSE_TOUCH_TOGGLED":
+      return toggleNoseTouch(state, event.playerId, event.touching);
+    case "NOSE_COUNTDOWN_RESOLVED":
+      return resolveNoseCountdown(state);
     default: {
       const exhaustiveCheck: never = event;
       throw new Error(`Event inconnu: ${JSON.stringify(exhaustiveCheck)}`);

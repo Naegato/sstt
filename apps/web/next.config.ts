@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Image Docker minimale (voir apps/web/Dockerfile) : ne copie que le strict
+  // nécessaire à l'exécution, pas node_modules complet.
+  output: "standalone",
   transpilePackages: ["@card-game/shared-types"],
   webpack: (config) => {
     // Nos packages du workspace utilisent des imports relatifs en ".js" (résolution

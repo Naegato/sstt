@@ -2399,7 +2399,7 @@ describe("Moteur — choix simultané à options multiples (Chiffre)", () => {
   });
 });
 
-describe("Moteur — fenêtre de dénonciation d'une carte réflexe instantanée (Index réflexe, Nez à nez, Pied de nez)", () => {
+describe("Moteur — fenêtre de dénonciation d'une carte réflexe instantanée (Index réflexe)", () => {
   function makeReflexCard(id = "index-reflexe-1") {
     return makeCard({ id, name: "Index réflexe", rarity: "etoile", effects: [] });
   }
@@ -2447,5 +2447,97 @@ describe("Moteur — fenêtre de dénonciation d'une carte réflexe instantanée
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler.id, timestamp: 4 }).state;
 
     expect(state.openReflexCardId).toBe(reflex.id);
+  });
+});
+
+describe("Moteur — décompte synchronisé automatisé (Nez à nez, Pied de nez)", () => {
+  function makeNezANezCard(id = "nez-a-nez-1") {
+    return makeCard({ id, name: "Nez à nez", effects: [{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }] });
+  }
+
+  function makePiedDeNezCard(id = "pied-de-nez-1") {
+    return makeCard({ id, name: "Pied de nez", effects: [{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }] });
+  }
+
+  it("ouvre pendingNoseCountdown avec tous les joueurs en jeu éligibles (porteur inclus)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeNezANezCard();
+    state = startGame(state, [card, ...makeDeck(20)]);
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 });
+
+    expect(result.state.pendingNoseCountdown).toEqual({
+      cardId: card.id,
+      holderId: "p1",
+      seconds: 3,
+      eliminateIfTouching: false,
+      eligiblePlayerIds: ["p1", "p2", "p3"],
+      touching: {},
+    });
+  });
+
+  it("NOSE_TOUCH_TOGGLED enregistre l'état sans résoudre ni éliminer", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeNezANezCard();
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+
+    const result = processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "p2", touching: true, timestamp: 4 });
+
+    expect(result.state.pendingNoseCountdown?.touching).toEqual({ p2: true });
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(false);
+  });
+
+  it("refuse le toggle d'un joueur non éligible (hors partie)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeNezANezCard();
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+
+    expect(() =>
+      processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "inconnu", touching: true, timestamp: 4 }),
+    ).toThrow();
+  });
+
+  it("\"Nez à nez\" élimine à la résolution ceux qui NE touchent PAS leur nez", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeNezANezCard();
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+    // p1 (porteur) et p3 touchent leur nez, p2 ne touche pas (ou n'a jamais basculé).
+    state = processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "p1", touching: true, timestamp: 4 }).state;
+    state = processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "p3", touching: true, timestamp: 5 }).state;
+
+    const result = processEvent(state, { type: "NOSE_COUNTDOWN_RESOLVED", timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
+    expect(result.state.pendingNoseCountdown).toBeNull();
+  });
+
+  it("\"Pied de nez\" élimine à la résolution ceux qui touchent ENCORE leur nez, porteur inclus", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makePiedDeNezCard();
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+    // p1 (porteur) oublie de lâcher son nez, p2 touche encore aussi, p3 a bien lâché.
+    state = processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "p1", touching: true, timestamp: 4 }).state;
+    state = processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "p2", touching: true, timestamp: 5 }).state;
+    state = processEvent(state, { type: "NOSE_TOUCH_TOGGLED", playerId: "p3", touching: false, timestamp: 6 }).state;
+
+    const result = processEvent(state, { type: "NOSE_COUNTDOWN_RESOLVED", timestamp: 7 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
+  });
+
+  it("bloque la fin de tour tant que le décompte n'est pas résolu", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeNezANezCard();
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+
+    expect(() => processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4 })).toThrow();
   });
 });

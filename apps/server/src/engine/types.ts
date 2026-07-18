@@ -23,7 +23,10 @@ export type SideEffect =
   | { type: "TURN_DIRECTION_REVERSED" }
   | { type: "GAME_RESET" }
   | { type: "CHOICE_STARTED"; cardId: CardId }
-  | { type: "CHOICE_MADE"; playerId: PlayerId };
+  | { type: "CHOICE_MADE"; playerId: PlayerId }
+  /** Signale à GameService qu'il doit programmer la résolution automatique (minuteur) dans `seconds` secondes. */
+  | { type: "NOSE_COUNTDOWN_STARTED"; seconds: number }
+  | { type: "NOSE_TOUCH_CHANGED"; playerId: PlayerId; touching: boolean };
 
 export type EngineResult = {
   state: GameState;

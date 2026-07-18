@@ -20,26 +20,29 @@ const COOKIE_OPTIONS = {
 };
 
 export default async function authRoutes(fastify: FastifyInstance) {
-  fastify.post<{ Body: { email: string; password: string; displayName: string } }>("/register", async (request, reply) => {
-    const { email, password, displayName } = request.body ?? {};
-    if (!email || !password || !displayName) {
-      return reply.code(400).send({ message: "email, password et displayName sont requis" });
-    }
-    if (password.length < 8) {
-      return reply.code(400).send({ message: "Le mot de passe doit faire au moins 8 caractères" });
-    }
+  fastify.post<{ Body: { email: string; password: string; displayName: string; firstName: string; lastName: string } }>(
+    "/register",
+    async (request, reply) => {
+      const { email, password, displayName, firstName, lastName } = request.body ?? {};
+      if (!email || !password || !displayName || !firstName || !lastName) {
+        return reply.code(400).send({ message: "email, password, displayName, firstName et lastName sont requis" });
+      }
+      if (password.length < 8) {
+        return reply.code(400).send({ message: "Le mot de passe doit faire au moins 8 caractères" });
+      }
 
-    const existing = await findUserByEmail(email);
-    if (existing) {
-      return reply.code(409).send({ message: "Un compte existe déjà avec cet email" });
-    }
+      const existing = await findUserByEmail(email);
+      if (existing) {
+        return reply.code(409).send({ message: "Un compte existe déjà avec cet email" });
+      }
 
-    const passwordHash = await hashPassword(password);
-    const user = await createUserWithPassword(email, passwordHash, displayName);
-    const token = await signSessionToken(user.id);
-    reply.setCookie(config.COOKIE_NAME, token, COOKIE_OPTIONS);
-    return reply.code(201).send({ user });
-  });
+      const passwordHash = await hashPassword(password);
+      const user = await createUserWithPassword(email, passwordHash, displayName, firstName, lastName);
+      const token = await signSessionToken(user.id);
+      reply.setCookie(config.COOKIE_NAME, token, COOKIE_OPTIONS);
+      return reply.code(201).send({ user });
+    },
+  );
 
   fastify.post<{ Body: { email: string; password: string } }>("/login", async (request, reply) => {
     const { email, password } = request.body ?? {};
@@ -59,7 +62,15 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const token = await signSessionToken(user.id);
     reply.setCookie(config.COOKIE_NAME, token, COOKIE_OPTIONS);
-    return reply.send({ user: { id: user.id, email: user.email, displayName: user.displayName } });
+    return reply.send({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    });
   });
 
   fastify.post("/logout", async (_request, reply) => {
@@ -102,6 +113,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
           providerAccountId: profile.providerAccountId,
           email: profile.email,
           displayName: profile.displayName,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
         });
         const token = await signSessionToken(user.id);
         reply.setCookie(config.COOKIE_NAME, token, COOKIE_OPTIONS);

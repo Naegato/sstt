@@ -1,13 +1,14 @@
 import { JoinRoomForm } from "@/components/lobby/JoinRoomForm";
-import { CardCatalogButton } from "@/components/CardCatalogButton";
+import { getCurrentUser } from "@/lib/session";
 
-export default function LobbyPage() {
+export default async function LobbyPage() {
+  const user = await getCurrentUser();
+
   return (
     <main className="centered-page">
       <div className="sticker-page-card">
         <h1>Rejoindre une partie</h1>
-        <JoinRoomForm />
-        <CardCatalogButton />
+        <JoinRoomForm initialName={user?.displayName ?? null} />
       </div>
     </main>
   );

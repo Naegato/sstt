@@ -1,7 +1,16 @@
 import path from "node:path";
 import type { Card, CardCatalogEntry, CardRarity } from "@card-game/shared-types";
 
-const CSV_PATH = path.join(import.meta.dir, "../../../../assets/cards/cards.csv");
+/**
+ * `import.meta.dir` ne peut pas servir de base fiable ici : `bun build` bundle
+ * tout dans un seul `dist/index.js`, ce qui change la profondeur réelle du
+ * fichier par rapport à la racine du repo (fonctionne en dev non-bundlé,
+ * casse silencieusement une fois buildé). `ASSETS_DIR` permet de le fixer
+ * explicitement (voir apps/server/Dockerfile), avec la même remontée relative
+ * qu'avant comme valeur par défaut pour le dev (`bun run --watch src/index.ts`).
+ */
+const ASSETS_DIR = process.env.ASSETS_DIR ?? path.join(import.meta.dir, "../../../../assets");
+const CSV_PATH = path.join(ASSETS_DIR, "cards/cards.csv");
 
 /** Parseur CSV minimal (RFC4180 : champs entre guillemets, virgules et guillemets échappés ""). */
 function parseCsvLine(line: string): string[] {
@@ -202,6 +211,14 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
   // voir GameState.pendingChoice / submitChoice() dans state.ts.
   Bataille: [{ type: "START_ROCK_PAPER_SCISSORS" }],
   Chiffre: [{ type: "START_FINGER_COUNT_CHALLENGE" }],
+
+  // Décompte synchronisé (bouton "nez" en direct) + résolution automatique à
+  // la fin — voir GameState.pendingNoseCountdown / resolveNoseCountdown() dans
+  // state.ts. "Nez à nez" élimine ceux qui NE touchent PAS leur nez au compte
+  // 3 ; "Pied de nez" élimine ceux qui touchent ENCORE leur nez au compte 4,
+  // porteur inclus (le texte dit "tout joueur", pas "tout autre joueur").
+  "Nez à nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }],
+  "Pied de nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }],
 };
 
 /**

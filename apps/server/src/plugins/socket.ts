@@ -22,14 +22,12 @@ type ChallengeEliminationPayload = { roomId: string; challengerId: string; targe
 type ConfirmManualActionPayload = { roomId: string; playerId: string; cardId: string };
 type ResetGamePayload = { roomId: string };
 type SubmitChoicePayload = { roomId: string; playerId: string; value: string };
+type ToggleNoseTouchPayload = { roomId: string; playerId: string; touching: boolean };
 
 export async function registerSocket(fastify: FastifyInstance): Promise<void> {
   const io = new SocketIOServer(fastify.server, {
     cors: { origin: "*" },
   });
-
-  const roomManager = new RoomManager();
-  const gameService = new GameService(roomManager);
 
   function broadcastResult(roomId: string, result: EngineResult): void {
     io.to(roomId).emit(SERVER_EVENTS.GAME_STATE_UPDATE, { state: result.state, sideEffects: result.sideEffects });
@@ -37,6 +35,11 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
       io.to(roomId).emit(SERVER_EVENTS.GAME_OVER, { winnerIds: result.state.winnerIds });
     }
   }
+
+  const roomManager = new RoomManager();
+  // Le minuteur de "Nez à nez"/"Pied de nez" (voir GameService.scheduleNoseCountdownResolution)
+  // résout puis diffuse spontanément, sans event socket entrant — réutilise broadcastResult.
+  const gameService = new GameService(roomManager, broadcastResult);
 
   io.on("connection", (socket) => {
     socket.on(CLIENT_EVENTS.JOIN_ROOM, ({ roomId, playerId, playerName }: JoinRoomPayload) => {
@@ -151,6 +154,15 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
     socket.on(CLIENT_EVENTS.SUBMIT_CHOICE, ({ roomId, playerId, value }: SubmitChoicePayload) => {
       try {
         const result = gameService.submitChoice(roomId, playerId, value);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.TOGGLE_NOSE_TOUCH, ({ roomId, playerId, touching }: ToggleNoseTouchPayload) => {
+      try {
+        const result = gameService.toggleNoseTouch(roomId, playerId, touching);
         broadcastResult(roomId, result);
       } catch (err) {
         emitError(socket, err);

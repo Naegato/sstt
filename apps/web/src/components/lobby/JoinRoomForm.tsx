@@ -10,7 +10,12 @@ import { useGameStore } from "@/stores/gameStore";
 import { type JoinRoomInput, joinRoomSchema } from "@/lib/schemas";
 import { getPersistedPlayerName, persistPlayerName } from "@/lib/playerIdentity";
 
-export function JoinRoomForm() {
+type JoinRoomFormProps = {
+  /** Nom du compte connecté (rendu côté serveur) — pré-remplissage par défaut si aucun nom de joueur n'a jamais été mémorisé sur ce navigateur. */
+  initialName?: string | null;
+};
+
+export function JoinRoomForm({ initialName }: JoinRoomFormProps) {
   const router = useRouter();
   const playerId = usePlayerId();
   const { joinRoom } = useSocket();
@@ -23,11 +28,15 @@ export function JoinRoomForm() {
     formState: { errors, isSubmitting },
   } = useForm<JoinRoomInput>({
     resolver: zodResolver(joinRoomSchema),
-    defaultValues: { roomId: "", playerName: "" },
+    // `initialName` vient du serveur (identique au premier rendu client) donc
+    // safe en defaultValues, contrairement à `getPersistedPlayerName()`
+    // (localStorage, jamais accessible côté serveur) qui doit attendre un
+    // useEffect pour éviter un mismatch d'hydratation.
+    defaultValues: { roomId: "", playerName: initialName ?? "" },
   });
 
-  // Pré-remplit avec le dernier nom utilisé, mais après le rendu initial (pas
-  // dans defaultValues) pour éviter un mismatch d'hydratation SSR/client.
+  // Le dernier nom mémorisé sur ce navigateur (déjà utilisé pour jouer,
+  // éventuellement en invité) prime sur le nom du compte connecté.
   useEffect(() => {
     const persisted = getPersistedPlayerName();
     if (persisted) setValue("playerName", persisted);

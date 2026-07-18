@@ -23,8 +23,17 @@ async function apiFetch(path: string, init?: RequestInit) {
   return data;
 }
 
-export function registerAccount(email: string, password: string, displayName: string) {
-  return apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName }) });
+export function registerAccount(
+  email: string,
+  password: string,
+  displayName: string,
+  firstName: string,
+  lastName: string,
+) {
+  return apiFetch("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password, displayName, firstName, lastName }),
+  });
 }
 
 export function login(email: string, password: string) {
