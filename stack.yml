@@ -7,6 +7,12 @@ services:
       PORT: 3001
       ALLOWED_ORIGINS: https://card-game.wiatr.fr
       WEB_ORIGIN: https://card-game.wiatr.fr
+      # Les Client ID ne sont pas secrets (visibles dans l'URL d'autorisation
+      # OAuth elle-même) — seuls les Client Secret le sont, voir plus bas.
+      DISCORD_CLIENT_ID: "1528102567954092195"
+      DISCORD_REDIRECT_URI: https://api-card-game.wiatr.fr/api/auth/discord/callback
+      GOOGLE_CLIENT_ID: 698981807192-2u79dt4l32sv6pitlbvvhj1po12u04ue.apps.googleusercontent.com
+      GOOGLE_REDIRECT_URI: https://api-card-game.wiatr.fr/api/auth/google/callback
     # Les secrets Docker ne sont jamais exposés comme variables d'env
     # directement (juste montés en fichiers sous /run/secrets/) — ce wrapper
     # les lit une fois au démarrage plutôt que de modifier config/env.ts pour
@@ -18,10 +24,14 @@ services:
       - >
         export DATABASE_URL="postgres://card_game:$$(cat /run/secrets/db_password)@postgres:5432/card_game";
         export JWT_SECRET="$$(cat /run/secrets/jwt_secret)";
+        export DISCORD_CLIENT_SECRET="$$(cat /run/secrets/discord_client_secret)";
+        export GOOGLE_CLIENT_SECRET="$$(cat /run/secrets/google_client_secret)";
         exec bun run dist/index.js
     secrets:
       - db_password
       - jwt_secret
+      - discord_client_secret
+      - google_client_secret
     deploy:
       replicas: 1
       restart_policy:
@@ -64,6 +74,10 @@ secrets:
   db_password:
     external: true
   jwt_secret:
+    external: true
+  discord_client_secret:
+    external: true
+  google_client_secret:
     external: true
 
 volumes:
