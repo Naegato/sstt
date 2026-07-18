@@ -17,7 +17,7 @@ describe("GameEvent serialization", () => {
     },
     { type: "PLAYER_ELIMINATED", playerId: "p1", reason: "card_effect", timestamp: 700 },
     { type: "TURN_ENDED", playerId: "p2", timestamp: 800 },
-    { type: "GAME_ENDED", winnerId: "p2", timestamp: 900 },
+    { type: "GAME_ENDED", winnerIds: ["p2"], timestamp: 900 },
   ];
 
   it("round-trips every event type through JSON without data loss", () => {

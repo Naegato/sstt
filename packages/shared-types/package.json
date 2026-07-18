@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./events": "./src/events/index.ts",
     "./game": "./src/game/types.ts",
-    "./socket": "./src/socket/events.ts"
+    "./socket": "./src/socket/events.ts",
+    "./user": "./src/user/types.ts"
   },
   "scripts": {
     "test": "bun test",

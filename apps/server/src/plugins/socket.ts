@@ -1,13 +1,25 @@
 import type { FastifyInstance } from "fastify";
 import { Server as SocketIOServer } from "socket.io";
-import { CLIENT_EVENTS, SERVER_EVENTS } from "@card-game/shared-types";
-import { GameLogicError } from "../engine/index.js";
+import { CLIENT_EVENTS, SERVER_EVENTS, type VoteChoice } from "@card-game/shared-types";
+import { GameLogicError, type EngineResult } from "../engine/index.js";
 import { GameService } from "../services/game-service.js";
 import { RoomManager } from "../services/room-manager.js";
 
 type JoinRoomPayload = { roomId: string; playerId: string; playerName: string };
 type StartGamePayload = { roomId: string };
-type PlayCardPayload = { roomId: string; playerId: string; cardId: string; targetPlayerId?: string };
+type PlayCardPayload = {
+  roomId: string;
+  playerId: string;
+  cardId: string;
+  targetPlayerId?: string;
+  playedAsInterrupt?: boolean;
+};
+type EndTurnPayload = { roomId: string; playerId: string };
+type CastVotePayload = { roomId: string; playerId: string; choice: VoteChoice };
+type StealPlayedCardPayload = { roomId: string; playerId: string; targetPlayerId: string; cardId: string };
+type PassHotPotatoPayload = { roomId: string; playerId: string };
+type ChallengeEliminationPayload = { roomId: string; challengerId: string; targetPlayerId: string; reason: string };
+type ConfirmManualActionPayload = { roomId: string; playerId: string; cardId: string };
 
 export async function registerSocket(fastify: FastifyInstance): Promise<void> {
   const io = new SocketIOServer(fastify.server, {
@@ -16,6 +28,13 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
 
   const roomManager = new RoomManager();
   const gameService = new GameService(roomManager);
+
+  function broadcastResult(roomId: string, result: EngineResult): void {
+    io.to(roomId).emit(SERVER_EVENTS.GAME_STATE_UPDATE, { state: result.state, sideEffects: result.sideEffects });
+    if (result.state.phase === "ended") {
+      io.to(roomId).emit(SERVER_EVENTS.GAME_OVER, { winnerIds: result.state.winnerIds });
+    }
+  }
 
   io.on("connection", (socket) => {
     socket.on(CLIENT_EVENTS.JOIN_ROOM, ({ roomId, playerId, playerName }: JoinRoomPayload) => {
@@ -31,45 +50,88 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
         });
 
         socket.emit(SERVER_EVENTS.ROOM_JOINED, { roomId, playerId });
-        io.to(roomId).emit(SERVER_EVENTS.GAME_STATE_UPDATE, {
-          state: result.state,
-          sideEffects: result.sideEffects,
-        });
+        broadcastResult(roomId, result);
       } catch (err) {
         emitError(socket, err);
       }
     });
 
     // Déclenché par un joueur de la room (v1 : n'importe qui peut démarrer, pas de notion d'hôte pour l'instant).
-    socket.on(CLIENT_EVENTS.START_GAME, ({ roomId }: StartGamePayload) => {
+    socket.on(CLIENT_EVENTS.START_GAME, async ({ roomId }: StartGamePayload) => {
       try {
-        const result = gameService.startGame(roomId);
-        io.to(roomId).emit(SERVER_EVENTS.GAME_STATE_UPDATE, {
-          state: result.state,
-          sideEffects: result.sideEffects,
-        });
+        const result = await gameService.startGame(roomId);
+        broadcastResult(roomId, result);
       } catch (err) {
         emitError(socket, err);
       }
     });
 
-    socket.on(CLIENT_EVENTS.PLAY_CARD, ({ roomId, playerId, cardId, targetPlayerId }: PlayCardPayload) => {
+    socket.on(CLIENT_EVENTS.PLAY_CARD, ({ roomId, playerId, cardId, targetPlayerId, playedAsInterrupt }: PlayCardPayload) => {
+      try {
+        const result = gameService.playCard(roomId, playerId, cardId, targetPlayerId, playedAsInterrupt);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.END_TURN, ({ roomId, playerId }: EndTurnPayload) => {
+      try {
+        const result = gameService.endTurn(roomId, playerId);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.CAST_VOTE, ({ roomId, playerId, choice }: CastVotePayload) => {
       try {
         const result = gameService.handleEvent(roomId, {
-          type: "CARD_PLAYED",
+          type: "VOTE_CAST",
           playerId,
-          cardId,
-          targetPlayerId,
+          choice,
           timestamp: Date.now(),
         });
-        io.to(roomId).emit(SERVER_EVENTS.GAME_STATE_UPDATE, {
-          state: result.state,
-          sideEffects: result.sideEffects,
-        });
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
 
-        if (result.state.phase === "ended") {
-          io.to(roomId).emit(SERVER_EVENTS.GAME_OVER, { winnerId: result.state.winnerId });
+    socket.on(CLIENT_EVENTS.STEAL_PLAYED_CARD, ({ roomId, playerId, targetPlayerId, cardId }: StealPlayedCardPayload) => {
+      try {
+        const result = gameService.stealPlayedCard(roomId, playerId, targetPlayerId, cardId);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.PASS_HOT_POTATO, ({ roomId, playerId }: PassHotPotatoPayload) => {
+      try {
+        const result = gameService.passHotPotato(roomId, playerId);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(
+      CLIENT_EVENTS.CHALLENGE_ELIMINATION,
+      ({ roomId, challengerId, targetPlayerId, reason }: ChallengeEliminationPayload) => {
+        try {
+          const result = gameService.denouncePlayer(roomId, challengerId, targetPlayerId, reason);
+          broadcastResult(roomId, result);
+        } catch (err) {
+          emitError(socket, err);
         }
+      },
+    );
+
+    socket.on(CLIENT_EVENTS.CONFIRM_MANUAL_ACTION, ({ roomId, playerId, cardId }: ConfirmManualActionPayload) => {
+      try {
+        const result = gameService.confirmManualAction(roomId, playerId, cardId);
+        broadcastResult(roomId, result);
       } catch (err) {
         emitError(socket, err);
       }

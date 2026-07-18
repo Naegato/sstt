@@ -1,7 +1,9 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
 import { config } from "./config/env.js";
 import { registerSocket } from "./plugins/socket.js";
+import authRoutes from "./routes/auth.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -10,6 +12,10 @@ export async function buildApp() {
     origin: config.ALLOWED_ORIGINS,
     credentials: true,
   });
+
+  await app.register(cookie);
+
+  await app.register(authRoutes, { prefix: "/api/auth" });
 
   await registerSocket(app);
 

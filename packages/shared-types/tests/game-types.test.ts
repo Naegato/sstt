@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { Card, GameState, Player } from "../src/game/types.js";
-import { MAX_PLAYERS, MIN_PLAYERS, STARTING_HAND_SIZE } from "../src/game/constants.js";
+import { MAX_PLAYERS, MIN_PLAYERS, STARTING_HAND_SIZE, WINNING_POINTS } from "../src/game/constants.js";
 
 function makePlayer(id: string): Player {
-  return { id, name: id, hand: [], playedCards: [], isEliminated: false, points: 0, skipNextTurn: false };
+  return { id, name: id, hand: [], playedCards: [], isEliminated: false, points: 0, skipTurns: 0 };
 }
 
 const bombeCard: Card = {
@@ -11,7 +11,7 @@ const bombeCard: Card = {
   name: "Bombe",
   rarity: "normale",
   text: "Placez cette carte face visible devant vous, puis rejouez un tour.",
-  effect: { type: "PLACE_IN_FRONT_OF_SELF" },
+  effects: [{ type: "PLACE_IN_FRONT_OF_SELF" }],
 };
 
 const manualCard: Card = {
@@ -19,7 +19,7 @@ const manualCard: Card = {
   name: "Index réflexe",
   rarity: "etoile",
   text: "Quiconque montre du doigt un autre joueur ou une carte sera immédiatement éliminé.",
-  // pas de `effect` : carte manuelle, résolue par confirmation des joueurs
+  effects: [], // carte manuelle, résolue par confirmation des joueurs
 };
 
 describe("GameState models N players correctly", () => {
@@ -32,7 +32,14 @@ describe("GameState models N players correctly", () => {
       currentPlayerId: players[0]?.id ?? null,
       drawPile: [],
       discardPile: [],
-      winnerId: null,
+      winnerIds: null,
+      pointsToWin: WINNING_POINTS,
+      pendingVote: null,
+      lastEliminationBatch: null,
+      lastPlayedCard: null,
+      stolenThisTurn: false,
+      pendingFinito: null,
+      turnDirection: 1,
     };
 
     expect(state.players.length).toBe(MAX_PLAYERS);
@@ -49,8 +56,8 @@ describe("GameState models N players correctly", () => {
 
 describe("Card effect resolution model", () => {
   it("distinguishes automated effects from manual (text-only) cards", () => {
-    expect(bombeCard.effect).toBeDefined();
-    expect(manualCard.effect).toBeUndefined();
+    expect(bombeCard.effects.length).toBeGreaterThan(0);
+    expect(manualCard.effects).toHaveLength(0);
   });
 });
 

@@ -9,10 +9,15 @@ export type RoomId = string;
  */
 export type CardRarity = "normale" | "etoile" | "chaos" | "vierge";
 
+export type VoteChoice = "oui" | "non";
+
+/** Ce qui arrive à un joueur selon son vote, une fois le vote simultané révélé. */
+export type VoteOutcome = "ELIMINATE" | "LOSE_CARD" | "NOTHING";
+
 /**
  * Effets mécaniques que le moteur pur sait résoudre automatiquement.
- * Liste volontairement minimale au démarrage — étendue au fil de l'implémentation
- * des cartes réelles. Une carte sans effet automatisé correspondant reste "manuelle".
+ * Liste étendue au fil de l'implémentation des cartes réelles. Une carte sans
+ * effet automatisé correspondant reste "manuelle".
  */
 export type AutomatedEffect =
   | { type: "DRAW_CARDS"; count: number }
@@ -21,7 +26,192 @@ export type AutomatedEffect =
   | { type: "PLACE_IN_FRONT_OF_SELF" }
   | { type: "PLACE_IN_FRONT_OF_TARGET" }
   | { type: "ELIMINATE_SELF" }
-  | { type: "ELIMINATE_TARGET" };
+  | { type: "ELIMINATE_TARGET" }
+  | { type: "ADD_POINTS"; amount: number }
+  | { type: "SET_POINTS_TO_WIN"; value: number }
+  /** Si `threshold` exemplaires de `cardName` sont face visible sur la table (toutes piles confondues), élimine tous les joueurs en jeu. */
+  | { type: "CHECK_BOARD_ELIMINATION"; cardName: string; threshold: number }
+  /** Marqueur passif : si cette carte est encore dans la pile du joueur courant à la fin de son tour, il est éliminé (ex: Dragon, Laser). */
+  | { type: "ELIMINATE_AT_END_OF_TURN_IF_PRESENT" }
+  /** Si une carte nommée dans `matchNames` est déjà dans la pile du joueur, la déplace vers la cible ; sinon pioche `drawCountIfNone` cartes. */
+  | { type: "REDIRECT_NAMED_CARD_OR_DRAW"; matchNames: string[]; drawCountIfNone: number }
+  /** Le joueur qui JOUE la carte (pas la cible) saute ses `count` prochains tours. */
+  | { type: "SKIP_OWN_NEXT_TURNS"; count: number }
+  /** Si, après application, exactement `count` joueurs sont encore en jeu, le joueur qui a joué la carte gagne. */
+  | { type: "WIN_IF_ALIVE_COUNT"; count: number }
+  /** Ouvre un vote simultané oui/non pour tous les joueurs en jeu (ex: Cadeaux). Résolu par des events VOTE_CAST. */
+  | { type: "START_SIMULTANEOUS_VOTE"; onYes: VoteOutcome; onNo: VoteOutcome }
+  /** Donne `count` cartes de la main du joueur qui joue la carte vers la main du joueur cible. */
+  | { type: "GIVE_CARDS_TO_TARGET"; count: number }
+  /**
+   * Ouvre un vote à majorité "Gâteau ou Tombeau" pour tous les AUTRES joueurs en jeu
+   * (le joueur qui a joué la carte ne vote pas). Majorité "tombeau" (oui) → il est
+   * éliminé. Majorité "gâteau" (non) → ceux qui ont voté tombeau sont éliminés.
+   * Égalité → il gagne immédiatement la partie.
+   */
+  | { type: "START_MAJORITY_VOTE_CAKE_OR_GRAVE" }
+  /**
+   * Ouvre un vote à majorité "La mort ou Tchi-tchi" pour TOUS les joueurs en jeu, y
+   * compris celui qui a joué la carte. Exactement 1 "tchi-tchi" (oui) → ce joueur
+   * gagne immédiatement. 2+ "tchi-tchi" → ils sont tous éliminés. 0 → rien ne se passe.
+   */
+  | { type: "START_MAJORITY_VOTE_DEATH_OR_TCHI" }
+  /**
+   * Carte réactive (ex: Vie supplémentaire) : jouable hors tour, uniquement par
+   * un joueur actuellement éliminé — annule son élimination et pioche 1 carte.
+   * Limite assumée : si son élimination avait déjà mis fin à la partie (plus
+   * personne d'autre en jeu), la victoire est déclarée avant toute réaction possible.
+   */
+  | { type: "REACT_TO_OWN_ELIMINATION" }
+  /**
+   * Carte réactive (ex: Gros nul !) : jouable hors tour, uniquement par un joueur
+   * qui vient d'être éliminé EN GROUPE (voir `GameState.lastEliminationBatch`,
+   * ≥2 joueurs éliminés ensemble par le même event, sans que la partie soit
+   * terminée). `targetPlayerId` désigne le joueur du groupe qui reste seul
+   * éliminé ; tous les autres membres du groupe (dont l'auteur, sauf s'il se
+   * désigne lui-même) sont réintégrés. Fenêtre de réaction fermée dès qu'un
+   * autre event (fin de tour, carte non-réactive) survient — voir cards.ts/state.ts.
+   */
+  | { type: "REACT_TO_GROUP_ELIMINATION" }
+  /**
+   * Carte à double usage (ex: Embuscade de chatons) : jouée normalement à son
+   * tour, un autre effet de la même carte s'applique (ex: DRAW_CARDS) ; jouée en
+   * interruption (`CardPlayedEvent.playedAsInterrupt`, hors tour, à tout moment),
+   * SEUL cet effet s'applique à la place — voir `GameState.lastPlayedCard` et la
+   * logique de sélection d'effet selon le mode dans `apps/server/src/engine/cards.ts`.
+   * Retire la carte visée (la plus récemment jouée, toutes piles confondues) de
+   * la pile où elle se trouve et la défausse, puis fait piocher 1 carte à
+   * l'interrupteur. Limite assumée : n'annule que la présence physique de la
+   * carte sur la table, pas les effets déjà appliqués (points, éliminations...)
+   * qu'elle a pu déclencher entre-temps — non généralisable proprement dans un
+   * moteur event-sourced à sens unique.
+   */
+  | { type: "CANCEL_LAST_PLAYED_CARD" }
+  /**
+   * Marqueur passif (ex: Rire démoniaque) : tant que cette carte est dans la pile
+   * personnelle d'un joueur (posée devant lui), il pioche 1 carte à chaque fois
+   * qu'un joueur (n'importe lequel) se fait éliminer — vérifié de façon centrale
+   * après CHAQUE event dans `processEvent` (voir `apps/server/src/engine/index.ts`),
+   * pas seulement après CARD_PLAYED, pour couvrir aussi les éliminations différées
+   * (TURN_ENDED/danger) et les votes.
+   */
+  | { type: "DRAW_ON_ANY_ELIMINATION" }
+  /** Tous les joueurs actuellement en jeu (non éliminés) gagnent la partie ensemble (ex: Câlin de groupe). */
+  | { type: "WIN_ALL_ALIVE_PLAYERS" }
+  /**
+   * Marqueur passif (ex: Pioche verrouillée !) : tant que cette carte est posée
+   * devant un joueur, plus personne ne peut piocher (toute pioche, quelle que
+   * soit sa source, ramène 0 carte — voir `isDrawPileLocked`/`drawCards` dans
+   * `apps/server/src/engine/state.ts`). Si un joueur se retrouve avec une main
+   * vide à l'issue de la pioche de son tour, il est immédiatement éliminé (voir
+   * la boucle dédiée sur l'event CARD_DRAWN dans `apps/server/src/engine/index.ts`).
+   */
+  | { type: "LOCK_DRAW_PILE" }
+  /**
+   * Marqueur passif (ex: Pingouins) : tant que cette carte est posée devant un
+   * joueur, il peut — au début de SON tour, au plus une fois par tour — voler 1
+   * carte posée devant un autre joueur, via l'event dédié `STEAL_PLAYED_CARD`
+   * (action optionnelle du joueur, pas une résolution automatique). Voir
+   * `GameState.stolenThisTurn` et `stealPlayedCard()` dans `state.ts`.
+   */
+  | { type: "STEAL_ON_TURN_START" }
+  /**
+   * Marqueur passif (ex: Patate chaude) : le joueur qui a cette carte devant lui
+   * DOIT la passer au joueur suivant (event dédié `PASS_HOT_POTATO`, destinataire
+   * déterministe : pas de choix) avant de jouer une carte à son tour. S'il essaie
+   * de jouer une carte alors qu'il la porte encore, il est immédiatement éliminé
+   * à la place (voir la vérification en tête de `playCard()` dans `cards.ts`).
+   */
+  | { type: "MUST_PASS_BEFORE_PLAYING" }
+  /**
+   * Marqueur passif (ex: Dinosaure) : tant que cette carte est posée devant un
+   * joueur, personne d'autre ne peut lui placer une carte devant lui (Dragon,
+   * Réforme des retraites, Patate chaude...) — la tentative est refusée
+   * (`TARGET_PROTECTED`), le joueur ciblant doit choisir quelqu'un d'autre.
+   * Portée volontairement limitée : ne protège que contre le placement direct
+   * d'une carte jouée avec PLACE_IN_FRONT_OF_TARGET, pas contre un déplacement
+   * ultérieur (ex: Bouclier qui redirige une carte déjà en jeu) — cas non
+   * couvert, jugé trop marginal pour la complexité que ça demanderait.
+   * N'affecte jamais les propres cartes du porteur, qui continue de jouer
+   * normalement (elles se posent devant lui comme d'habitude).
+   */
+  | { type: "BLOCK_INCOMING_PLACEMENT" }
+  /**
+   * (Politique) Tous les joueurs remélangent leur main dans la pioche puis
+   * tirent `count` cartes. Nécessite de l'aléatoire (mélange) : le moteur pur
+   * ne mélange jamais lui-même — voir `CardPlayedEvent.shuffledDrawPileOrder`,
+   * calculé côté service AVANT de construire l'event (même principe que
+   * `GameStartedEvent.deck`).
+   */
+  | { type: "RESHUFFLE_ALL_HANDS_AND_REDRAW"; count: number }
+  /**
+   * (Politique) La carte jouée part directement à la défausse commune au lieu
+   * du placement par défaut devant son auteur — remplace la logique de
+   * placement habituelle de `playCard()`, ne s'ajoute pas à la boucle d'effets.
+   */
+  | { type: "DISCARD_SELF" }
+  /**
+   * Carte réactive (ex: Enfoiré !) : jouable uniquement juste après qu'un seul
+   * joueur ait gagné la partie (`GameState.phase === "ended"`, `winnerIds`
+   * réduit à 1 joueur) sans avoir éliminé le porteur. Élimine le vainqueur ET
+   * le porteur. Si ≥2 joueurs restent en jeu après ça, la partie reprend
+   * (`phase` repasse à `"playing"`) ; sinon elle se termine (vainqueur unique
+   * restant, ou personne). Contourne spécifiquement le court-circuit
+   * `phase === "ended"` de `processEvent()` — seule carte à le faire. Limite
+   * assumée : ne gère qu'une victoire à 1 seul vainqueur (pas Câlin de groupe,
+   * "un joueur" au singulier dans le texte) ; ne force pas de nouvelle pioche
+   * pour le joueur dont c'est le tour après reprise.
+   */
+  | { type: "REACT_TO_OTHER_PLAYER_VICTORY" }
+  /**
+   * (Finito) Marqueur différé : à la fin du PROCHAIN tour du porteur (pas la fin
+   * du tour en cours où elle est jouée), élimine tous les joueurs en jeu, sans
+   * exception (voir `GameState.pendingFinito`, `scheduleFinito`/`checkFinito`
+   * dans `apps/server/src/engine/state.ts`).
+   */
+  | { type: "SCHEDULE_ELIMINATE_ALL_NEXT_TURN_END" }
+  /**
+   * (Ninjas) Vole 1 carte tirée au hasard dans la main de `targetPlayerId` (voir
+   * `CardPlayedEvent.stolenCardId`, calculé côté service) et la joue
+   * immédiatement pour le compte du joueur qui a joué Ninjas — placement par
+   * défaut + effets non-interactifs de cette carte volée s'appliquent tel
+   * quel. Limite assumée : si la carte volée nécessite elle-même un joueur
+   * cible (ex: Dragon), c'est `targetPlayerId` (celui visé par Ninjas) qui est
+   * réutilisé par défaut, faute de second choix possible dans le texte "vous
+   * devez la jouer immédiatement". Absent de la main de la cible → rien ne se
+   * passe (main vide, rien à voler).
+   */
+  | { type: "STEAL_RANDOM_CARD_AND_FORCE_PLAY" }
+  /**
+   * (Foire aux bombes) Tous les joueurs révèlent les cartes "Bombe" de leur main
+   * et les placent face visible devant eux (pas les autres cartes). Si le total
+   * de Bombes sur la table atteint `threshold` (4, même seuil que l'explosion
+   * normale via `CHECK_BOARD_ELIMINATION`), le joueur qui a joué cette carte
+   * gagne immédiatement la partie ; sinon rien d'autre ne se passe (les Bombes
+   * restent révélées).
+   */
+  | { type: "REVEAL_BOMBS_AND_WIN_IF_ENOUGH"; threshold: number }
+  /**
+   * (Gilet jaune) Marqueur passif, vérifié au début du tour du porteur (dans
+   * `advanceTurn`, pas `TURN_ENDED`) : si cette carte est encore devant lui
+   * quand la rotation des tours arrive sur lui, elle est défaussée, son tour
+   * est sauté (il ne devient jamais le joueur courant pour ce passage), et le
+   * sens de rotation de la table s'inverse (`GameState.turnDirection`) à
+   * partir de ce moment — voir `apps/server/src/engine/turns.ts`.
+   */
+  | { type: "REVERSE_DIRECTION_AND_SKIP_IF_PRESENT" }
+  /**
+   * (Illumination ludique) Marqueur passif : tant que cette carte est posée
+   * devant un joueur, il joue 1 carte au hasard de sa main à chaque tour, sans
+   * possibilité de choisir — plus de pioche-puis-choix normal. Nécessite de
+   * l'aléatoire (quelle carte, et quelle cible si la carte l'exige) : entièrement
+   * orchestré côté `GameService` (voir `maybeForceRandomPlay` dans
+   * `apps/server/src/services/game-service.ts`), qui réutilise `playCard()`
+   * telle quelle — le moteur pur ne connaît que le marqueur, jamais l'aléatoire.
+   * Limite assumée, comme "Pioche verrouillée !" : si la main du porteur est
+   * vide, rien ne se passe (pas d'élimination automatique généralisée).
+   */
+  | { type: "FORCE_RANDOM_CARD_EACH_TURN" };
 
 export type Card = {
   id: CardId;
@@ -29,8 +219,8 @@ export type Card = {
   rarity: CardRarity;
   /** Texte d'instruction complet tel qu'imprimé sur la carte. */
   text: string;
-  /** Absent = effet manuel : le moteur affiche `text` et attend une confirmation des joueurs. */
-  effect?: AutomatedEffect;
+  /** Vide = effet manuel : le moteur affiche `text` et attend une confirmation des joueurs. */
+  effects: AutomatedEffect[];
 };
 
 export type Player = {
@@ -41,11 +231,60 @@ export type Player = {
   playedCards: Card[];
   isEliminated: boolean;
   points: number;
-  /** Consommé (remis à false) au moment où ce joueur aurait dû jouer. */
-  skipNextTurn: boolean;
+  /** Nombre de tours restant à sauter (décrémenté à chaque tour qui aurait dû être le sien). */
+  skipTurns: number;
 };
 
 export type GamePhase = "lobby" | "playing" | "ended";
+
+/**
+ * Vote simultané en cours (ex: carte Cadeaux). Bloque la fin de tour jusqu'à
+ * résolution. Le "secret" du vote est une convention côté UI (ne pas afficher
+ * les votes des autres avant révélation) — pas un secret cryptographique
+ * côté serveur, ce qui est amplement suffisant pour un jeu entre amis.
+ */
+export type PendingVote =
+  | {
+      mode: "simultaneous";
+      cardId: CardId;
+      eligiblePlayerIds: PlayerId[];
+      votes: Partial<Record<PlayerId, VoteChoice>>;
+      onYes: VoteOutcome;
+      onNo: VoteOutcome;
+    }
+  | {
+      /** "Gâteau ou Tombeau" : tous les autres joueurs votent, l'auteur de la carte non. */
+      mode: "cakeOrGrave";
+      cardId: CardId;
+      eligiblePlayerIds: PlayerId[];
+      votes: Partial<Record<PlayerId, VoteChoice>>;
+      actorPlayerId: PlayerId;
+    }
+  | {
+      /** "La mort ou Tchi-tchi" : tous les joueurs en jeu votent, y compris l'auteur. */
+      mode: "deathOrTchi";
+      cardId: CardId;
+      eligiblePlayerIds: PlayerId[];
+      votes: Partial<Record<PlayerId, VoteChoice>>;
+    }
+  | {
+      /**
+       * Dénonciation : un joueur estime qu'un autre n'a pas respecté une carte
+       * manuelle (texte affiché, pas d'automatisation) — ex: n'a pas fait le
+       * geste demandé, a dit un mot interdit... Tous les joueurs en jeu votent
+       * SAUF le dénoncé (conflit d'intérêt). Majorité stricte de "oui" ->
+       * éliminé ; égalité ou majorité de "non" -> rien ne se passe. Pas liée à
+       * une carte précise (`cardId` absent), déclenchable à tout moment par
+       * n'importe quel joueur, sans rapport avec l'ordre des tours.
+       */
+      mode: "denunciation";
+      accuserId: PlayerId;
+      accusedId: PlayerId;
+      /** Raison libre saisie par l'accusateur (ex: "n'a pas fait le geste demandé par la carte X"), affichée aux votants. */
+      reason: string;
+      eligiblePlayerIds: PlayerId[];
+      votes: Partial<Record<PlayerId, VoteChoice>>;
+    };
 
 export type GameState = {
   roomId: RoomId;
@@ -56,5 +295,49 @@ export type GameState = {
   drawPile: Card[];
   /** Défausse commune (distincte des piles personnelles `Player.playedCards`). */
   discardPile: Card[];
-  winnerId: PlayerId | null;
+  /**
+   * Vainqueur(s) de la partie une fois `phase === "ended"` — un tableau plutôt
+   * qu'un id unique pour supporter les victoires collectives (ex: Câlin de
+   * groupe, `WIN_ALL_ALIVE_PLAYERS`). `null` tant que la partie n'est pas
+   * terminée, ou si elle s'est terminée sans aucun vainqueur (ex: explosion de
+   * bombes qui élimine tout le monde d'un coup).
+   */
+  winnerIds: PlayerId[] | null;
+  /** Score à atteindre pour gagner par points (modifiable par des cartes comme "Super Points"). */
+  pointsToWin: number;
+  pendingVote: PendingVote | null;
+  /**
+   * Identifiants des joueurs éliminés ensemble par le dernier event d'élimination
+   * groupée (≥2 joueurs, partie toujours en cours) — fenêtre de réaction pour
+   * "Gros nul !" (`REACT_TO_GROUP_ELIMINATION`). `null` si aucune fenêtre ouverte
+   * ou si elle vient de se refermer (tour suivant, autre carte jouée).
+   */
+  lastEliminationBatch: PlayerId[] | null;
+  /**
+   * Dernière carte jouée par n'importe qui, toujours en jeu sur la table (dans
+   * `playedCards` de `holderId`) — cible potentielle de "Embuscade de chatons"
+   * (`CANCEL_LAST_PLAYED_CARD`). Contrairement à `lastEliminationBatch`, aucune
+   * fenêtre de temps ne se referme : le texte de la carte dit "à tout moment".
+   * `null` uniquement avant la toute première carte jouée de la partie.
+   */
+  lastPlayedCard: { cardId: CardId; holderId: PlayerId } | null;
+  /**
+   * Vrai si le vol optionnel de "Pingouins" (`STEAL_ON_TURN_START`) a déjà été
+   * utilisé pendant le tour en cours — au plus 1 vol par tour, par n'importe quel
+   * porteur. Remis à `false` à chaque changement de joueur courant (`advanceTurn`).
+   */
+  stolenThisTurn: boolean;
+  /**
+   * Marqueur différé "Finito" (`SCHEDULE_ELIMINATE_ALL_NEXT_TURN_END`) : `primed`
+   * passe à `true` la première fois que le tour du porteur se termine après avoir
+   * joué la carte (pas d'élimination ce coup-ci) ; la fois suivante, tout le monde
+   * est éliminé et ce champ repasse à `null`. `null` si aucune Finito en attente.
+   */
+  pendingFinito: { holderId: PlayerId; primed: boolean } | null;
+  /**
+   * Sens de rotation des tours : `1` = ordre normal de `players`, `-1` = inversé
+   * (voir "Gilet jaune", `REVERSE_DIRECTION_AND_SKIP_IF_PRESENT`). Peut s'inverser
+   * plusieurs fois au cours d'une partie si plusieurs Gilets jaunes se succèdent.
+   */
+  turnDirection: 1 | -1;
 };
