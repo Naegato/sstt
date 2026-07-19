@@ -116,7 +116,15 @@ jobs:
               pg_isready -h postgres -U card_game && break
             sleep 3
           done
+          # -u $(id -u):$(id -g) : sans ça, "bun install" tourne en root DANS le
+          # conteneur et écrit node_modules en root:root sur le checkout de CE
+          # runner self-hosted (bind mount $PWD) — le prochain run ne peut alors
+          # plus nettoyer ces fichiers lors du checkout (EACCES sur git clean),
+          # ce qui casse toute la CI au run suivant. -e HOME=/tmp : l'UID hôte
+          # n'a pas d'entrée /etc/passwd dans l'image, bun a besoin d'un HOME
+          # inscriptible pour son cache.
           docker run --rm --network card-game \
+            -u "$(id -u):$(id -g)" -e HOME=/tmp \
             -v "$PWD:/repo" -w /repo/apps/server \
             -e DATABASE_URL="postgres://card_game:${{ secrets.DB_PASSWORD }}@postgres:5432/card_game" \
             oven/bun:1 sh -c "bun install --frozen-lockfile && bun run db:migrate"
