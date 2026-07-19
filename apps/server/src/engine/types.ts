@@ -26,7 +26,9 @@ export type SideEffect =
   | { type: "CHOICE_MADE"; playerId: PlayerId }
   /** Signale à GameService qu'il doit programmer la résolution automatique (minuteur) dans `seconds` secondes. */
   | { type: "NOSE_COUNTDOWN_STARTED"; seconds: number }
-  | { type: "NOSE_TOUCH_CHANGED"; playerId: PlayerId; touching: boolean };
+  | { type: "NOSE_TOUCH_CHANGED"; playerId: PlayerId; touching: boolean }
+  | { type: "HAND_SLAPPED"; playerId: PlayerId }
+  | { type: "HAND_SLAP_STARTED"; cardId: CardId };
 
 export type EngineResult = {
   state: GameState;

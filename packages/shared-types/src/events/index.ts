@@ -51,6 +51,13 @@ export type CardPlayedEvent = BaseEvent & {
    * lui-même. Absent si la main de la cible est vide (rien à voler).
    */
   stolenCardId?: CardId;
+  /**
+   * Réservé à "Vous avez gagné !" (effet `WIN_IF_CONDITION_ELSE_POINTS`) :
+   * choix du joueur au moment de jouer la carte entre tenter de gagner
+   * (`true`) ou simplement poser la carte pour les points de repli (`false`/
+   * absent) — même principe de choix au moment du jeu que `playedAsInterrupt`.
+   */
+  claimWin?: boolean;
 };
 
 /** Confirmation déclarative qu'un effet manuel (texte affiché) a bien été exécuté. */
@@ -158,6 +165,16 @@ export type NoseCountdownResolvedEvent = BaseEvent & {
   type: "NOSE_COUNTDOWN_RESOLVED";
 };
 
+/**
+ * Un joueur clique "Poser sa main" pendant une course au clic en cours (voir
+ * GameState.pendingHandSlap — Du chocolat !). Le serveur horodate l'ordre
+ * d'arrivée à la réception ; résolu dès que tous les joueurs éligibles ont cliqué.
+ */
+export type HandSlappedEvent = BaseEvent & {
+  type: "HAND_SLAPPED";
+  playerId: PlayerId;
+};
+
 export type GameEvent =
   | PlayerJoinedEvent
   | GameStartedEvent
@@ -174,4 +191,5 @@ export type GameEvent =
   | GameResetEvent
   | ChoiceSubmittedEvent
   | NoseTouchToggledEvent
-  | NoseCountdownResolvedEvent;
+  | NoseCountdownResolvedEvent
+  | HandSlappedEvent;

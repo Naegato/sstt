@@ -46,6 +46,7 @@ export class GameService {
     cardId: CardId,
     targetPlayerId?: PlayerId,
     playedAsInterrupt?: boolean,
+    claimWin?: boolean,
   ): EngineResult {
     // "Politique" a besoin d'aléatoire (mélange des mains + de la pioche) : le
     // moteur pur ne mélange jamais lui-même, donc c'est calculé ici, avant de
@@ -79,6 +80,7 @@ export class GameService {
       playedAsInterrupt,
       shuffledDrawPileOrder,
       stolenCardId,
+      claimWin,
       timestamp: Date.now(),
     });
 
@@ -159,6 +161,11 @@ export class GameService {
   /** Bascule le bouton "nez" d'un joueur pendant un décompte en cours (Nez à nez, Pied de nez) — voir GameState.pendingNoseCountdown. */
   toggleNoseTouch(roomId: RoomId, playerId: PlayerId, touching: boolean): EngineResult {
     return this.handleEvent(roomId, { type: "NOSE_TOUCH_TOGGLED", playerId, touching, timestamp: Date.now() });
+  }
+
+  /** Clique "Poser sa main" pendant une course au clic en cours (Du chocolat !) — voir GameState.pendingHandSlap. */
+  slapHand(roomId: RoomId, playerId: PlayerId): EngineResult {
+    return this.handleEvent(roomId, { type: "HAND_SLAPPED", playerId, timestamp: Date.now() });
   }
 
   /**

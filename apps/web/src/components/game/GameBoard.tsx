@@ -7,6 +7,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { CardZoomModal } from "./CardZoomModal";
 import { ChoicePanel } from "./ChoicePanel";
 import { DenunciationPanel } from "./DenunciationPanel";
+import { HandSlapPanel } from "./HandSlapPanel";
 import { NoseCountdownPanel } from "./NoseCountdownPanel";
 import { PlayerHand } from "./PlayerHand";
 import { TurnIndicator } from "./TurnIndicator";
@@ -29,12 +30,20 @@ export function GameBoard() {
     resetGame,
     submitChoice,
     toggleNoseTouch,
+    slapHand,
   } = useSocket();
   const [confirmedCardId, setConfirmedCardId] = useState<string | null>(null);
   // Carte affichée en grand : soit en lecture seule (peek sur une carte posée,
   // pas de confirmAction), soit avec confirmation (carte en main, sur le point
-  // d'être jouée — voir handleCardClick/confirmPreview).
-  const [cardModal, setCardModal] = useState<{ card: CardType; confirmAction?: () => void } | null>(null);
+  // d'être jouée — voir handleCardClick/confirmPreview) ; secondaryAction sert
+  // au double choix de "Vous avez gagné !" (tenter de gagner / poser pour +N points).
+  const [cardModal, setCardModal] = useState<{
+    card: CardType;
+    confirmAction?: () => void;
+    confirmLabel?: string;
+    secondaryAction?: () => void;
+    secondaryLabel?: string;
+  } | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
 
   if (!gameState || !roomId) {
@@ -71,11 +80,14 @@ export function GameBoard() {
     // playedAsInterrupt plus bas. Désactivée seulement s'il n'y a rien à annuler.
     const canBePlayedAsInterrupt = card.effects.some((e) => e.type === "CANCEL_LAST_PLAYED_CARD");
     if (canBePlayedAsInterrupt) {
-      const canPlayNormally = isMyTurn && !self?.isEliminated;
+      const canPlayNormally = isMyTurn && !self?.isEliminated && !gameState.hasPlayedThisTurn;
       return !canPlayNormally && !gameState.lastPlayedCard;
     }
 
-    return !isMyTurn || Boolean(self?.isEliminated);
+    // Règle "1 carte par tour" : verrouille la main dès que la carte du tour
+    // est jouée, sauf si un effet vient d'accorder PLAY_AGAIN (remet le
+    // marqueur à false côté serveur) — voir GameState.hasPlayedThisTurn.
+    return !isMyTurn || Boolean(self?.isEliminated) || gameState.hasPlayedThisTurn;
   };
 
   // Effets qui exigent réellement un joueur cible côté moteur (voir MISSING_TARGET
@@ -90,13 +102,13 @@ export function GameBoard() {
   ]);
   const cardNeedsTarget = (card: CardType) => card.effects.some((e) => TARGET_REQUIRING_EFFECTS.has(e.type));
 
-  const submitPlayCard = (card: CardType, targetPlayerId?: string) => {
+  const submitPlayCard = (card: CardType, targetPlayerId?: string, claimWin?: boolean) => {
     if (!self) return;
     const canBePlayedAsInterrupt = card.effects.some((e) => e.type === "CANCEL_LAST_PLAYED_CARD");
     // Double usage : sur son propre tour -> mode normal (pioche 3) ; sinon
     // -> interruption (annule la dernière carte jouée) — voir isCardDisabled.
     const playedAsInterrupt = canBePlayedAsInterrupt ? !(isMyTurn && !self.isEliminated) : undefined;
-    playCard(roomId, self.id, card.id, targetPlayerId, playedAsInterrupt);
+    playCard(roomId, self.id, card.id, targetPlayerId, playedAsInterrupt, claimWin);
     setSelectedCard(null);
   };
 
@@ -119,6 +131,26 @@ export function GameBoard() {
   const handleCardClick = (card: CardType) => {
     if (selectedCard?.id === card.id) {
       setSelectedCard(null);
+      return;
+    }
+    // "Vous avez gagné !" et variantes : choix entre tenter de gagner (vérif
+    // auto ou vote selon la condition, voir WIN_IF_CONDITION_ELSE_POINTS côté
+    // moteur) et simplement poser pour des points garantis — pas de cible.
+    const winClaimEffect = card.effects.find((e) => e.type === "WIN_IF_CONDITION_ELSE_POINTS");
+    if (winClaimEffect && winClaimEffect.type === "WIN_IF_CONDITION_ELSE_POINTS") {
+      setCardModal({
+        card,
+        confirmAction: () => {
+          setCardModal(null);
+          submitPlayCard(card, undefined, true);
+        },
+        confirmLabel: "Tenter de gagner",
+        secondaryAction: () => {
+          setCardModal(null);
+          submitPlayCard(card, undefined, false);
+        },
+        secondaryLabel: `Poser pour +${winClaimEffect.fallbackPoints} points`,
+      });
       return;
     }
     setCardModal({ card, confirmAction: () => confirmPreview(card) });
@@ -237,7 +269,8 @@ export function GameBoard() {
             gameState.phase === "playing" &&
             !gameState.pendingVote &&
             !gameState.pendingChoice &&
-            !gameState.pendingNoseCountdown && (
+            !gameState.pendingNoseCountdown &&
+            !gameState.pendingHandSlap && (
             <div className="self-zone">
               {isTargeting && (
                 <p className="game-board__targeting-hint">
@@ -267,7 +300,9 @@ export function GameBoard() {
         card={cardModal?.card ?? null}
         onClose={() => setCardModal(null)}
         onConfirm={cardModal?.confirmAction}
-        confirmLabel="Jouer cette carte"
+        confirmLabel={cardModal?.confirmLabel ?? "Jouer cette carte"}
+        onSecondary={cardModal?.secondaryAction}
+        secondaryLabel={cardModal?.secondaryLabel}
       />
 
       {gameState.phase === "playing" && gameState.pendingVote && (
@@ -301,6 +336,17 @@ export function GameBoard() {
         />
       )}
 
+      {gameState.phase === "playing" && gameState.pendingHandSlap && (
+        <HandSlapPanel
+          pendingHandSlap={gameState.pendingHandSlap}
+          card={gameState.players
+            .find((p) => p.id === gameState.pendingHandSlap!.holderId)
+            ?.playedCards.find((c) => c.id === gameState.pendingHandSlap!.cardId)}
+          selfPlayerId={playerId}
+          onSlap={() => self && slapHand(roomId, self.id)}
+        />
+      )}
+
       {/* Dénonciation : uniquement pour les cartes manuelles "règle en vigueur"
           (Moi, Zombies...) réellement posées sur la table — pas de dénonciation
           générique sans carte à dénoncer. Un bouton par carte active ; ouvre un
@@ -311,6 +357,7 @@ export function GameBoard() {
         !gameState.pendingVote &&
         !gameState.pendingChoice &&
         !gameState.pendingNoseCountdown &&
+        !gameState.pendingHandSlap &&
         !self.isEliminated && (
           <DenunciationPanel
             players={gameState.players}
@@ -338,7 +385,12 @@ export function GameBoard() {
         </div>
       )}
 
-      {self && gameState.phase === "playing" && !gameState.pendingVote && !gameState.pendingChoice && mustPassHotPotato && (
+      {self &&
+        gameState.phase === "playing" &&
+        !gameState.pendingVote &&
+        !gameState.pendingChoice &&
+        !gameState.pendingHandSlap &&
+        mustPassHotPotato && (
         <div className="game-board__warning">
           <p>Tu as la Patate chaude ! Passe-la avant de jouer une carte, sinon tu seras éliminé.</p>
           <button type="button" className="btn-sticker" onClick={() => passHotPotato(roomId, self.id)}>

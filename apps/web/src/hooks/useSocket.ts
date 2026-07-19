@@ -53,8 +53,16 @@ export function useSocket() {
     cardId: string,
     targetPlayerId?: string,
     playedAsInterrupt?: boolean,
+    claimWin?: boolean,
   ) => {
-    socketRef.current.emit(CLIENT_EVENTS.PLAY_CARD, { roomId, playerId, cardId, targetPlayerId, playedAsInterrupt });
+    socketRef.current.emit(CLIENT_EVENTS.PLAY_CARD, {
+      roomId,
+      playerId,
+      cardId,
+      targetPlayerId,
+      playedAsInterrupt,
+      claimWin,
+    });
   };
 
   const endTurn = (roomId: string, playerId: string) => {
@@ -93,6 +101,10 @@ export function useSocket() {
     socketRef.current.emit(CLIENT_EVENTS.TOGGLE_NOSE_TOUCH, { roomId, playerId, touching });
   };
 
+  const slapHand = (roomId: string, playerId: string) => {
+    socketRef.current.emit(CLIENT_EVENTS.SLAP_HAND, { roomId, playerId });
+  };
+
   return {
     joinRoom,
     startGame,
@@ -106,5 +118,6 @@ export function useSocket() {
     resetGame,
     submitChoice,
     toggleNoseTouch,
+    slapHand,
   };
 }

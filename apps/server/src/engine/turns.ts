@@ -67,7 +67,7 @@ export function advanceTurn(state: GameState): EngineResult {
 
   // Nouveau tour : le vol optionnel de Pingouins (STEAL_ON_TURN_START) redevient disponible.
   return {
-    state: { ...next, currentPlayerId: nextPlayerId, turnDirection: direction, stolenThisTurn: false },
+    state: { ...next, currentPlayerId: nextPlayerId, turnDirection: direction, stolenThisTurn: false, hasPlayedThisTurn: false },
     sideEffects,
   };
 }

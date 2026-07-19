@@ -102,3 +102,21 @@ jobs:
 
       - name: Deploy stack
         run: docker stack deploy -c stack.yml card-game --with-registry-auth
+
+      # Le job "test" ne migre que la Postgres éphémère de ce job (service
+      # container) — jamais la vraie base du swarm. Sans cette étape, les
+      # tables (ex: oauth_accounts) n'existent jamais sur la base de prod.
+      # Tourne dans un conteneur jetable attaché au réseau overlay (la base
+      # n'est jamais exposée sur un port hôte) ; idempotent (drizzle-kit ne
+      # rejoue jamais une migration déjà appliquée).
+      - name: Run database migrations on the swarm
+        run: |
+          for i in $(seq 1 10); do
+            docker run --rm --network card-game postgres:17-alpine \
+              pg_isready -h postgres -U card_game && break
+            sleep 3
+          done
+          docker run --rm --network card-game \
+            -v "$PWD:/repo" -w /repo/apps/server \
+            -e DATABASE_URL="postgres://card_game:${{ secrets.DB_PASSWORD }}@postgres:5432/card_game" \
+            oven/bun:1 sh -c "bun install --frozen-lockfile && bun run db:migrate"

@@ -17,6 +17,7 @@ const VOTE_LABELS: Record<PendingVote["mode"], { title: string; oui: string; non
   cakeOrGrave: { title: "Gâteau ou Tombeau", oui: "Tombeau", non: "Gâteau" },
   deathOrTchi: { title: "La mort ou Tchi-tchi ?", oui: "Tchi-tchi", non: "La mort" },
   denunciation: { title: "Dénonciation", oui: "Coupable", non: "Pas coupable" },
+  winClaim: { title: "Vous avez gagné !", oui: "Vrai", non: "Faux" },
 };
 
 export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePanelProps) {
@@ -25,7 +26,9 @@ export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePa
   const labels = VOTE_LABELS[pendingVote.mode];
   const nameOf = (id: PlayerId) => players.find((p) => p.id === id)?.name ?? id;
 
-  if (pendingVote.mode === "cakeOrGrave" && selfPlayerId === pendingVote.actorPlayerId) {
+  const actorPlayerId =
+    pendingVote.mode === "cakeOrGrave" || pendingVote.mode === "winClaim" ? pendingVote.actorPlayerId : null;
+  if (actorPlayerId && selfPlayerId === actorPlayerId) {
     return (
       <div className="vote-panel">
         <h2>Vote en cours : {labels.title}</h2>
@@ -47,6 +50,11 @@ export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePa
             : `${nameOf(pendingVote.accuserId)} dénonce ${nameOf(pendingVote.accusedId)}`}{" "}
           : « {pendingVote.reason} »
           {selfPlayerId === pendingVote.accusedId && " — tout le monde vote, y compris toi."}
+        </p>
+      )}
+      {pendingVote.mode === "winClaim" && (
+        <p>
+          {nameOf(pendingVote.actorPlayerId)} prétend que : « {pendingVote.description} »
         </p>
       )}
       <p>

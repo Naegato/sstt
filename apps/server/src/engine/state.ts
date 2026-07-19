@@ -17,11 +17,13 @@ export function createInitialState(roomId: RoomId): GameState {
     lastEliminationBatch: null,
     lastPlayedCard: null,
     stolenThisTurn: false,
+    hasPlayedThisTurn: false,
     pendingFinito: null,
     turnDirection: 1,
     pendingChoice: null,
     openReflexCardId: null,
     pendingNoseCountdown: null,
+    pendingHandSlap: null,
   };
 }
 
@@ -422,7 +424,7 @@ export function reactToVictory(state: GameState, reactingPlayerId: PlayerId): En
     ? next.currentPlayerId
     : findNextAlivePlayer(next, next.currentPlayerId ?? reactingPlayerId);
 
-  next = { ...next, phase: "playing", winnerIds: null, currentPlayerId, stolenThisTurn: false };
+  next = { ...next, phase: "playing", winnerIds: null, currentPlayerId, stolenThisTurn: false, hasPlayedThisTurn: false };
   return { state: next, sideEffects };
 }
 
@@ -489,6 +491,31 @@ export function startSimultaneousVote(
     ...state,
     pendingVote: { mode: "simultaneous", cardId, eligiblePlayerIds, votes: {}, onYes, onNo },
   };
+}
+
+/**
+ * Ouvre le vote à majorité "winClaim" ("Vous avez gagné !", condition non
+ * vérifiable par le serveur) : tous les joueurs en jeu SAUF l'auteur de la
+ * carte votent, même principe que "Gâteau ou Tombeau" (voir résolution dans `castVote`).
+ */
+export function startWinClaimVote(state: GameState, cardId: CardId, actorPlayerId: PlayerId, description: string): GameState {
+  const eligiblePlayerIds = state.players
+    .filter((p) => !p.isEliminated && p.id !== actorPlayerId)
+    .map((p) => p.id);
+  return {
+    ...state,
+    pendingVote: { mode: "winClaim", cardId, actorPlayerId, description, eligiblePlayerIds, votes: {} },
+  };
+}
+
+/** "Vous avez gagné !" (variante ≥N Bombes visibles) : compte les Bombes déjà posées sur la table, toutes piles confondues. */
+export function hasEnoughBombsOnBoard(state: GameState, threshold: number): boolean {
+  return countCardOnBoard(state, "Bombe") >= threshold;
+}
+
+/** "Vous avez gagné !" (variante "personne n'a de carte Étoile en main") : vérifie les mains de TOUS les joueurs, pas seulement l'auteur. */
+export function noPlayerHasStarCardInHand(state: GameState): boolean {
+  return state.players.every((p) => p.hand.every((c) => c.rarity !== "etoile"));
 }
 
 /**
@@ -704,6 +731,62 @@ export function resolveNoseCountdown(state: GameState): EngineResult {
   return eliminateSpecificPlayers(next, toEliminate);
 }
 
+/** Ouvre "Du chocolat !" : tous les joueurs en jeu (porteur inclus) peuvent cliquer "Poser sa main" jusqu'à résolution. */
+export function startHandSlap(
+  state: GameState,
+  cardId: CardId,
+  holderId: PlayerId,
+  mode: "firstLoses" | "lastLoses" | "onlyFirstSurvives",
+): GameState {
+  const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
+  return {
+    ...state,
+    pendingHandSlap: { cardId, holderId, mode, eligiblePlayerIds, order: [] },
+  };
+}
+
+/**
+ * Enregistre l'arrivée d'un joueur dans la course au clic — l'ordre est celui
+ * de réception côté serveur. Résout automatiquement dès que tous les joueurs
+ * éligibles ont cliqué (voir GameState.pendingHandSlap.mode).
+ */
+export function slapHand(state: GameState, playerId: PlayerId): EngineResult {
+  if (!state.pendingHandSlap) {
+    throw new GameLogicError("Aucune course au clic en cours", "NO_PENDING_HAND_SLAP", { playerId });
+  }
+  if (!state.pendingHandSlap.eligiblePlayerIds.includes(playerId)) {
+    throw new GameLogicError("Ce joueur n'est pas concerné par cette course au clic", "NOT_ELIGIBLE_FOR_HAND_SLAP", {
+      playerId,
+    });
+  }
+  if (state.pendingHandSlap.order.includes(playerId)) {
+    // Déjà cliqué — idempotent, pas d'erreur (peut arriver sur un double-clic réseau).
+    return { state, sideEffects: [] };
+  }
+
+  const pendingHandSlap = { ...state.pendingHandSlap, order: [...state.pendingHandSlap.order, playerId] };
+  let next: GameState = { ...state, pendingHandSlap };
+  const sideEffects: SideEffect[] = [{ type: "HAND_SLAPPED", playerId }];
+
+  const allSlapped = pendingHandSlap.eligiblePlayerIds.every((id) => pendingHandSlap.order.includes(id));
+  if (!allSlapped) {
+    return { state: next, sideEffects };
+  }
+  next = { ...next, pendingHandSlap: null };
+
+  const { mode, order } = pendingHandSlap;
+  let toEliminate: PlayerId[];
+  if (mode === "firstLoses") {
+    toEliminate = [order[0]!];
+  } else if (mode === "lastLoses") {
+    toEliminate = [order[order.length - 1]!];
+  } else {
+    toEliminate = order.slice(1); // onlyFirstSurvives : tout le monde sauf le premier
+  }
+  const result = eliminateSpecificPlayers(next, toEliminate);
+  return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };
+}
+
 /**
  * Enregistre le vote d'un joueur. Une fois que tous les joueurs éligibles ont
  * voté, résout automatiquement (élimination ou perte de carte selon le choix
@@ -767,6 +850,19 @@ export function castVote(state: GameState, playerId: PlayerId, choice: VoteChoic
     }
     if (tchiVoters.length > 1) {
       const result = eliminateSpecificPlayers(next, tchiVoters);
+      return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };
+    }
+    return { state: next, sideEffects };
+  }
+
+  if (pendingVote.mode === "winClaim") {
+    // Majorité stricte de "oui" (condition vraie) requise — égalité ou
+    // majorité de "non" -> rien ne se passe (pas de pénalité pour une
+    // fausse tentative, le texte de la carte ne le prévoit pas).
+    const trueVotes = pendingVote.eligiblePlayerIds.filter((id) => pendingVote.votes[id] === "oui").length;
+    const falseVotes = pendingVote.eligiblePlayerIds.filter((id) => pendingVote.votes[id] === "non").length;
+    if (trueVotes > falseVotes) {
+      const result = declareWinners(next, [pendingVote.actorPlayerId]);
       return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };
     }
     return { state: next, sideEffects };

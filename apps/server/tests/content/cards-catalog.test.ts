@@ -273,7 +273,29 @@ describe("loadPlayableDeck", () => {
     const deck = await loadPlayableDeck();
     const nezANez = deck.find((c) => c.name === "Nez à nez");
     const piedDeNez = deck.find((c) => c.name === "Pied de nez");
-    expect(nezANez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }]);
-    expect(piedDeNez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }]);
+    expect(nezANez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 2, eliminateIfTouching: false }]);
+    expect(piedDeNez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 2, eliminateIfTouching: true }]);
+  });
+
+  it("branche START_HAND_SLAP sur les 3 variantes de \"Du chocolat !\"", async () => {
+    const deck = await loadPlayableDeck();
+    const choco = deck.filter((c) => c.name === "Du chocolat !");
+    expect(choco).toHaveLength(3);
+    const modes = choco.map((c) => (c.effects[0] as { mode: string }).mode).sort();
+    expect(modes).toEqual(["firstLoses", "lastLoses", "onlyFirstSurvives"]);
+  });
+
+  it("branche WIN_IF_CONDITION_ELSE_POINTS sur les 6 variantes de \"Vous avez gagné !\"", async () => {
+    const deck = await loadPlayableDeck();
+    const gagne = deck.filter((c) => c.name === "Vous avez gagné !");
+    expect(gagne).toHaveLength(6);
+    // Toutes ont bien un effet (aucune n'est restée manuelle par erreur de détection).
+    expect(gagne.every((c) => c.effects.length === 1 && c.effects[0]!.type === "WIN_IF_CONDITION_ELSE_POINTS")).toBe(
+      true,
+    );
+    const kinds = gagne
+      .map((c) => (c.effects[0] as { condition: { kind: string } }).condition.kind)
+      .sort();
+    expect(kinds).toEqual(["bombsOnBoard", "noStarCardInAnyHand", "socialVote", "socialVote", "socialVote", "socialVote"]);
   });
 });

@@ -39,7 +39,7 @@ export function NoseCountdownPanel({ pendingNoseCountdown, card, players, selfPl
     <>
       {card && (
         <div className="nose-countdown__card-pin">
-          <span className="card__rarity">Carte en cours</span>
+          <span className="nose-countdown__card-pin-warning">⚠️ Attention, cette carte est en cours !</span>
           <span className="card__name">{card.name}</span>
           <span className="card__text">{card.text}</span>
         </div>

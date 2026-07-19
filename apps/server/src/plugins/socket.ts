@@ -13,6 +13,7 @@ type PlayCardPayload = {
   cardId: string;
   targetPlayerId?: string;
   playedAsInterrupt?: boolean;
+  claimWin?: boolean;
 };
 type EndTurnPayload = { roomId: string; playerId: string };
 type CastVotePayload = { roomId: string; playerId: string; choice: VoteChoice };
@@ -23,6 +24,7 @@ type ConfirmManualActionPayload = { roomId: string; playerId: string; cardId: st
 type ResetGamePayload = { roomId: string };
 type SubmitChoicePayload = { roomId: string; playerId: string; value: string };
 type ToggleNoseTouchPayload = { roomId: string; playerId: string; touching: boolean };
+type SlapHandPayload = { roomId: string; playerId: string };
 
 export async function registerSocket(fastify: FastifyInstance): Promise<void> {
   const io = new SocketIOServer(fastify.server, {
@@ -71,14 +73,17 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
       }
     });
 
-    socket.on(CLIENT_EVENTS.PLAY_CARD, ({ roomId, playerId, cardId, targetPlayerId, playedAsInterrupt }: PlayCardPayload) => {
-      try {
-        const result = gameService.playCard(roomId, playerId, cardId, targetPlayerId, playedAsInterrupt);
-        broadcastResult(roomId, result);
-      } catch (err) {
-        emitError(socket, err);
-      }
-    });
+    socket.on(
+      CLIENT_EVENTS.PLAY_CARD,
+      ({ roomId, playerId, cardId, targetPlayerId, playedAsInterrupt, claimWin }: PlayCardPayload) => {
+        try {
+          const result = gameService.playCard(roomId, playerId, cardId, targetPlayerId, playedAsInterrupt, claimWin);
+          broadcastResult(roomId, result);
+        } catch (err) {
+          emitError(socket, err);
+        }
+      },
+    );
 
     socket.on(CLIENT_EVENTS.END_TURN, ({ roomId, playerId }: EndTurnPayload) => {
       try {
@@ -163,6 +168,15 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
     socket.on(CLIENT_EVENTS.TOGGLE_NOSE_TOUCH, ({ roomId, playerId, touching }: ToggleNoseTouchPayload) => {
       try {
         const result = gameService.toggleNoseTouch(roomId, playerId, touching);
+        broadcastResult(roomId, result);
+      } catch (err) {
+        emitError(socket, err);
+      }
+    });
+
+    socket.on(CLIENT_EVENTS.SLAP_HAND, ({ roomId, playerId }: SlapHandPayload) => {
+      try {
+        const result = gameService.slapHand(roomId, playerId);
         broadcastResult(roomId, result);
       } catch (err) {
         emitError(socket, err);

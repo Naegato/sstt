@@ -241,7 +241,41 @@ export type AutomatedEffect =
    * minuteur côté `GameService` (le moteur pur ne connaît jamais l'horloge),
    * via l'event `NOSE_COUNTDOWN_RESOLVED`.
    */
-  | { type: "START_NOSE_COUNTDOWN"; seconds: number; eliminateIfTouching: boolean };
+  | { type: "START_NOSE_COUNTDOWN"; seconds: number; eliminateIfTouching: boolean }
+  /**
+   * (Du chocolat !) Lance une course au clic : chaque joueur en jeu (porteur
+   * inclus) clique un bouton "Poser sa main" dès qu'il le souhaite ; le
+   * serveur horodate l'ordre d'arrivée (`GameState.pendingHandSlap.order`).
+   * Résolu une fois que tout le monde a cliqué : `firstLoses` élimine le
+   * premier, `lastLoses` élimine le dernier, `onlyFirstSurvives` élimine tout
+   * le monde SAUF le premier. Même principe de confiance que le décompte Nez
+   * à nez/Pied de nez (ordre décidé par le serveur à la réception réseau,
+   * pas de synchro ultra-précise nécessaire pour un jeu entre amis).
+   */
+  | { type: "START_HAND_SLAP"; mode: "firstLoses" | "lastLoses" | "onlyFirstSurvives" }
+  /**
+   * (Vous avez gagné !) Au moment de jouer la carte, le joueur choisit entre
+   * tenter de gagner (si la condition tient) ou simplement poser la carte
+   * pour `fallbackPoints` (voir `CardPlayedEvent.claimWin`, même principe de
+   * choix au moment du jeu qu'Embuscade de chatons/`playedAsInterrupt`).
+   * `claimWin` non fourni ou `false` -> ADD_POINTS `fallbackPoints`, jamais
+   * de vérification. `claimWin: true` -> vérifie/vote selon `condition` :
+   * - `bombsOnBoard`/`noStarCardInAnyHand` : vérifiable par le serveur lui-même
+   *   (déjà dans l'état du jeu), pas de vote — victoire immédiate ou rien.
+   * - `socialVote` : condition non vérifiable serveur (anniversaire, taille,
+   *   composition du groupe...) — ouvre un vote à majorité des AUTRES joueurs
+   *   (mode `winClaim` de `PendingVote`, même principe que Gâteau ou Tombeau) ;
+   *   majorité "oui" -> victoire immédiate, sinon rien ne se passe (pas de
+   *   pénalité pour une fausse tentative, le texte ne le prévoit pas).
+   */
+  | {
+      type: "WIN_IF_CONDITION_ELSE_POINTS";
+      condition:
+        | { kind: "bombsOnBoard"; threshold: number }
+        | { kind: "noStarCardInAnyHand" }
+        | { kind: "socialVote"; description: string };
+      fallbackPoints: number;
+    };
 
 export type Card = {
   id: CardId;
@@ -330,7 +364,37 @@ export type PendingVote =
       reason: string;
       eligiblePlayerIds: PlayerId[];
       votes: Partial<Record<PlayerId, VoteChoice>>;
+    }
+  | {
+      /**
+       * "Vous avez gagné !" (variantes à condition non vérifiable par le
+       * serveur — anniversaire, taille, composition du groupe...) : tous les
+       * AUTRES joueurs votent sur la véracité de la condition, l'auteur de la
+       * carte ne vote pas — même principe que "Gâteau ou Tombeau". Majorité
+       * stricte de "oui" -> l'auteur gagne immédiatement ; égalité ou
+       * majorité de "non" -> rien ne se passe (voir WIN_IF_CONDITION_ELSE_POINTS).
+       */
+      mode: "winClaim";
+      cardId: CardId;
+      actorPlayerId: PlayerId;
+      /** Texte de la condition à vérifier, affiché aux votants (ex: "c'est le mois de son anniversaire"). */
+      description: string;
+      eligiblePlayerIds: PlayerId[];
+      votes: Partial<Record<PlayerId, VoteChoice>>;
     };
+
+/**
+ * Course au clic en cours ("Du chocolat !", voir `START_HAND_SLAP`). `order`
+ * accumule les joueurs dans l'ordre où ils ont cliqué "Poser sa main" ;
+ * résolu dès que tous les joueurs éligibles y figurent.
+ */
+export type PendingHandSlap = {
+  cardId: CardId;
+  holderId: PlayerId;
+  mode: "firstLoses" | "lastLoses" | "onlyFirstSurvives";
+  eligiblePlayerIds: PlayerId[];
+  order: PlayerId[];
+};
 
 /**
  * Choix simultané secret à PLUSIEURS options (contrairement à `PendingVote`,
@@ -413,6 +477,17 @@ export type GameState = {
    */
   stolenThisTurn: boolean;
   /**
+   * Vrai si le joueur courant a déjà joué sa carte normale du tour (règle
+   * officielle : 1 carte par tour, sauf exception explicite comme "Bombe"/
+   * "Tricheur" qui accordent `PLAY_AGAIN` — remis à `false` dans ce cas
+   * précis pour autoriser une carte de plus). Bloque toute tentative de
+   * carte normale supplémentaire (`ALREADY_PLAYED_THIS_TURN`) ; ne concerne
+   * jamais les cartes réactives hors tour (Vie supplémentaire, Gros nul !...)
+   * ni les interruptions (Embuscade de chatons). Remis à `false` à chaque
+   * changement de joueur courant (`advanceTurn`), comme `stolenThisTurn`.
+   */
+  hasPlayedThisTurn: boolean;
+  /**
    * Marqueur différé "Finito" (`SCHEDULE_ELIMINATE_ALL_NEXT_TURN_END`) : `primed`
    * passe à `true` la première fois que le tour du porteur se termine après avoir
    * joué la carte (pas d'élimination ce coup-ci) ; la fois suivante, tout le monde
@@ -429,6 +504,8 @@ export type GameState = {
   pendingChoice: PendingChoice | null;
   /** Décompte synchronisé en cours (Nez à nez, Pied de nez) — voir `PendingNoseCountdown`. Bloque la fin de tour comme `pendingVote`/`pendingChoice`. */
   pendingNoseCountdown: PendingNoseCountdown | null;
+  /** Course au clic en cours (Du chocolat !) — voir `PendingHandSlap`. Bloque la fin de tour comme les autres `pending*`. */
+  pendingHandSlap: PendingHandSlap | null;
   /**
    * Id de la dernière carte manuelle "réflexe instantané" jouée (ex: Index
    * réflexe, Nez à nez, Pied de nez) tant qu'elle reste dénonçable — contrairement

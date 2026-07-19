@@ -13,6 +13,7 @@ export const CLIENT_EVENTS = {
   RESET_GAME: "game:reset",
   SUBMIT_CHOICE: "game:submit-choice",
   TOGGLE_NOSE_TOUCH: "game:toggle-nose-touch",
+  SLAP_HAND: "game:slap-hand",
   CHAT: "chat:message",
 } as const;
 

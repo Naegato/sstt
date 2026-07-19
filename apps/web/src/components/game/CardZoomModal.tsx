@@ -13,6 +13,13 @@ type CardZoomModalProps = {
    */
   onConfirm?: () => void;
   confirmLabel?: string;
+  /**
+   * Second choix optionnel (ex: "Vous avez gagné !" — tenter de gagner OU
+   * poser pour +N points à la place) : un 3e bouton s'ajoute entre
+   * confirmer et annuler quand fourni. Ignoré si onConfirm est absent.
+   */
+  onSecondary?: () => void;
+  secondaryLabel?: string;
 };
 
 const rarityLabel: Record<CardType["rarity"], string> = {
@@ -28,7 +35,14 @@ const rarityLabel: Record<CardType["rarity"], string> = {
  * peek chez un adversaire), soit avec confirmation (carte en main : on doit
  * valider "Jouer cette carte" avant qu'elle parte réellement en jeu).
  */
-export function CardZoomModal({ card, onClose, onConfirm, confirmLabel = "Jouer cette carte" }: CardZoomModalProps) {
+export function CardZoomModal({
+  card,
+  onClose,
+  onConfirm,
+  confirmLabel = "Jouer cette carte",
+  onSecondary,
+  secondaryLabel,
+}: CardZoomModalProps) {
   useEffect(() => {
     if (!card) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -63,6 +77,11 @@ export function CardZoomModal({ card, onClose, onConfirm, confirmLabel = "Jouer 
             <button type="button" className="btn-sticker" onClick={onConfirm}>
               {confirmLabel}
             </button>
+            {onSecondary && (
+              <button type="button" className="btn-sticker btn-sticker--zone" onClick={onSecondary}>
+                {secondaryLabel}
+              </button>
+            )}
             <button type="button" className="btn-sticker btn-sticker--zone" onClick={onClose}>
               Annuler
             </button>

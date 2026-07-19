@@ -5,11 +5,14 @@ import {
   cancelLastPlayedCard,
   clearEliminationBatch,
   countCardOnBoard,
+  declareWinners,
   drawCards,
   eliminateAllAlivePlayers,
   eliminatePlayer,
   findPlayer,
+  hasEnoughBombsOnBoard,
   isProtectedByDinosaur,
+  noPlayerHasStarCardInHand,
   reactToGroupElimination,
   reactToVictory,
   revealBombsAndWinIfEnough,
@@ -19,9 +22,11 @@ import {
   startCakeOrGraveVote,
   startDeathOrTchiVote,
   startFingerCountChallenge,
+  startHandSlap,
   startNoseCountdown,
   startRockPaperScissors,
   startSimultaneousVote,
+  startWinClaimVote,
   updatePlayer,
   winAllAlivePlayers,
 } from "./state.js";
@@ -58,7 +63,9 @@ function placeInFrontOf(state: GameState, playerId: PlayerId, card: Card): GameS
  * jouée "pour le compte" d'un joueur, en dehors du flux normal de `playCard()`
  * (turn-order, Patate chaude...) — réservé à "Ninjas" (vol + jeu forcé
  * immédiat). Ignore toujours `CANCEL_LAST_PLAYED_CARD` (mode interruption),
- * qui n'a pas de sens dans un jeu forcé.
+ * qui n'a pas de sens dans un jeu forcé. Idem pour `claimWin` (toujours
+ * `undefined`, pas de choix interactif possible dans un jeu forcé) : une
+ * "Vous avez gagné !" volée résout automatiquement sur les points de repli.
  */
 function resolveForcedCardPlay(
   state: GameState,
@@ -95,7 +102,7 @@ function resolveForcedCardPlay(
 
   for (const effect of card.effects) {
     if (effect.type === "CANCEL_LAST_PLAYED_CARD") continue;
-    const result = applyOneEffect(next, effect, card, playerId, effectTargetId, undefined, undefined);
+    const result = applyOneEffect(next, effect, card, playerId, effectTargetId, undefined, undefined, undefined);
     next = result.state;
     sideEffects.push(...result.sideEffects);
     if (next.phase === "ended") break;
@@ -116,13 +123,15 @@ function applyOneEffect(
   targetPlayerId: PlayerId | undefined,
   shuffledDrawPileOrder: Card[] | undefined,
   stolenCardId: CardId | undefined,
+  claimWin: boolean | undefined,
 ): EngineResult {
   switch (effect.type) {
     case "DRAW_CARDS":
       return drawCards(state, playerId, effect.count);
 
     case "PLAY_AGAIN":
-      return { state, sideEffects: [{ type: "PLAY_AGAIN_GRANTED", playerId }] };
+      // Autorise une carte de plus ce tour-ci (voir GameState.hasPlayedThisTurn).
+      return { state: { ...state, hasPlayedThisTurn: false }, sideEffects: [{ type: "PLAY_AGAIN_GRANTED", playerId }] };
 
     case "SKIP_NEXT_TURN": {
       const skippedId = targetPlayerId ?? playerId;
@@ -370,6 +379,26 @@ function applyOneEffect(
       return { state: next, sideEffects: [{ type: "NOSE_COUNTDOWN_STARTED", seconds: effect.seconds }] };
     }
 
+    case "START_HAND_SLAP": {
+      const next = startHandSlap(state, card.id, playerId, effect.mode);
+      return { state: next, sideEffects: [{ type: "HAND_SLAP_STARTED", cardId: card.id }] };
+    }
+
+    case "WIN_IF_CONDITION_ELSE_POINTS": {
+      if (!claimWin) {
+        return addPoints(state, playerId, effect.fallbackPoints);
+      }
+      if (effect.condition.kind === "bombsOnBoard") {
+        return hasEnoughBombsOnBoard(state, effect.condition.threshold) ? declareWinners(state, [playerId]) : { state, sideEffects: [] };
+      }
+      if (effect.condition.kind === "noStarCardInAnyHand") {
+        return noPlayerHasStarCardInHand(state) ? declareWinners(state, [playerId]) : { state, sideEffects: [] };
+      }
+      // condition.kind === "socialVote" : pas vérifiable par le serveur, ouvre un vote à majorité.
+      const next = startWinClaimVote(state, card.id, playerId, effect.condition.description);
+      return { state: next, sideEffects: [{ type: "VOTE_STARTED", cardId: card.id }] };
+    }
+
     // Déjà géré par le placement par défaut dans playCard().
     case "PLACE_IN_FRONT_OF_SELF":
     case "PLACE_IN_FRONT_OF_TARGET":
@@ -456,14 +485,31 @@ export function playCard(state: GameState, event: CardPlayedEvent): EngineResult
     });
   }
 
+  // Une carte "normale" au sens de la règle "1 carte par tour" — ni réactive
+  // (jouable hors tour), ni une interruption (ex: Embuscade de chatons "à
+  // tout moment"), qui échappent toutes les deux au tour classique.
+  const isNormalTurnPlay =
+    !playedAsInterrupt && !isReactiveToOwnElimination && !isReactiveToGroupElimination && !isReactiveToVictory;
+
   // "Patate chaude" : oubli de la passer avant de jouer une carte à son tour
   // normal -> élimination immédiate à la place de l'action prévue (ne concerne
   // pas les cartes réactives/interruption, qui ne sont pas "jouer à son tour").
-  if (!playedAsInterrupt && !isReactiveToOwnElimination && !isReactiveToGroupElimination && !isReactiveToVictory) {
+  if (isNormalTurnPlay) {
     const hasHotPotato = player.playedCards.some((c) => c.effects.some((e) => e.type === "MUST_PASS_BEFORE_PLAYING"));
     if (hasHotPotato) {
       return eliminatePlayer(state, player.id);
     }
+  }
+
+  // Règle officielle : 1 carte par tour, sauf exception explicite (Bombe,
+  // Tricheur... qui accordent PLAY_AGAIN, voir plus bas). Ne s'applique
+  // jamais aux cartes réactives/interruption, qui ne comptent pas comme
+  // "la carte du tour".
+  if (isNormalTurnPlay && state.hasPlayedThisTurn) {
+    throw new GameLogicError("Une seule carte par tour (sauf effet qui accorde de rejouer)", "ALREADY_PLAYED_THIS_TURN", {
+      playerId: event.playerId,
+      cardId: card.id,
+    });
   }
 
   // La fenêtre de réaction "Gros nul !" se referme dès qu'une autre carte est
@@ -501,6 +547,12 @@ export function playCard(state: GameState, event: CardPlayedEvent): EngineResult
       next = { ...next, openReflexCardId: card.id };
     }
   }
+  // Consomme la carte du tour — un éventuel PLAY_AGAIN dans la boucle
+  // d'effets ci-dessous remet ce marqueur à `false` pour autoriser une carte
+  // de plus (voir le case "PLAY_AGAIN" dans applyOneEffect).
+  if (isNormalTurnPlay) {
+    next = { ...next, hasPlayedThisTurn: true };
+  }
 
   const lastPlayedCardBeforeEffects = next.lastPlayedCard;
   for (const effect of card.effects) {
@@ -517,6 +569,7 @@ export function playCard(state: GameState, event: CardPlayedEvent): EngineResult
       event.targetPlayerId,
       event.shuffledDrawPileOrder,
       event.stolenCardId,
+      event.claimWin,
     );
     next = result.state;
     sideEffects.push(...result.sideEffects);

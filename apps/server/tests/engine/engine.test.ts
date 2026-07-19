@@ -76,6 +76,50 @@ describe("Moteur — boucle de base (rejoindre → démarrer → piocher → jou
     ).toThrow();
   });
 
+  it("refuse une 2e carte normale dans le même tour (règle : 1 carte par tour)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const filler1 = makeCard({ id: "filler-1", name: "Filler 1" });
+    const filler2 = makeCard({ id: "filler-2", name: "Filler 2" });
+    state = startGame(state, [filler1, filler2, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler1.id, timestamp: 3 }).state;
+
+    expect(() =>
+      processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler2.id, timestamp: 4 }),
+    ).toThrow();
+  });
+
+  it("autorise une 2e carte dans le même tour si la 1ère accorde PLAY_AGAIN (ex: Bombe)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const bombe = makeCard({ id: "bombe-1", name: "Bombe", effects: [{ type: "PLAY_AGAIN" }] });
+    const filler = makeCard({ id: "filler-1", name: "Filler" });
+    state = startGame(state, [bombe, filler, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bombe.id, timestamp: 3 }).state;
+
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler.id, timestamp: 4 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.playedCards.map((c) => c.name)).toEqual([
+      "Bombe",
+      "Filler",
+    ]);
+  });
+
+  it("remet le compteur à zéro au changement de joueur courant", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const filler1 = makeCard({ id: "filler-1", name: "Filler 1" });
+    const filler2 = makeCard({ id: "filler-2", name: "Filler 2" });
+    state = startGame(state, [filler1, filler2, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler1.id, timestamp: 3 }).state;
+    state = processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4 }).state;
+    state = processEvent(state, { type: "TURN_ENDED", playerId: "p2", timestamp: 5 }).state;
+
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: filler2.id, timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.playedCards.map((c) => c.name)).toEqual([
+      "Filler 1",
+      "Filler 2",
+    ]);
+  });
+
   it("saute les joueurs éliminés lors du passage de tour", () => {
     let state = createInitialState("room-1");
     for (const [id, name] of [["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]] as const) {
@@ -216,6 +260,10 @@ describe("Moteur — effets automatisés simples", () => {
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: pointsCard.id, timestamp: 4 }).state;
     expect(state.players.find((p) => p.id === "p1")!.points).toBe(8);
     expect(state.phase).toBe("playing"); // 8 < 15, pas encore gagné
+
+    // 1 carte par tour : il faut repasser par p1 pour rejouer.
+    state = processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4.5 }).state;
+    state = processEvent(state, { type: "TURN_ENDED", playerId: "p2", timestamp: 4.6 }).state;
 
     const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: pointsCard2.id, timestamp: 5 });
     expect(result.state.players.find((p) => p.id === "p1")!.points).toBe(16);
@@ -954,8 +1002,11 @@ describe("Moteur — cartes réactives hors tour (Gros nul !)", () => {
     const grosNul = makeGrosNulCard();
     state = updatePlayer(state, "p2", (p) => ({ ...p, hand: [...p.hand, grosNul] }));
 
-    // Le joueur courant joue normalement sa carte pendant la fenêtre ouverte.
+    // Le joueur courant joue normalement sa carte pendant la fenêtre ouverte
+    // (a déjà joué sa carte du tour dans setupGroupElimination() — on isole
+    // ici le comportement testé, indépendant de la règle "1 carte par tour").
     const currentId = state.currentPlayerId!;
+    state = { ...state, hasPlayedThisTurn: false };
     const currentHand = state.players.find((p) => p.id === currentId)!.hand;
     state = processEvent(state, { type: "CARD_PLAYED", playerId: currentId, cardId: currentHand[0]!.id, timestamp: 7 }).state;
 
@@ -1285,7 +1336,9 @@ describe("Moteur — règle persistante (Pioche verrouillée !)", () => {
     // Un effet de carte comme DRAW_CARDS (ex: Tricheur) : ne ramène rien non plus.
     const tricheur = makeCard({ id: "tricheur-1", name: "Tricheur", effects: [{ type: "DRAW_CARDS", count: 2 }] });
     state = updatePlayer(state, "p2", (p) => ({ ...p, hand: [...p.hand, tricheur] }));
-    state = { ...state, currentPlayerId: "p2" };
+    // currentPlayerId forcé manuellement (pas de vrai TURN_ENDED ici) : hasPlayedThisTurn
+    // doit être remis à false comme le ferait advanceTurn() normalement.
+    state = { ...state, currentPlayerId: "p2", hasPlayedThisTurn: false };
     const p2HandBeforePlay = state.players.find((p) => p.id === "p2")!.hand.length;
     result = processEvent(state, { type: "CARD_PLAYED", playerId: "p2", cardId: tricheur.id, timestamp: 6 });
     // -1 (tricheur jouée) + 0 (pioche bloquée).
@@ -1539,7 +1592,9 @@ describe("Moteur — action obligatoire (Patate chaude)", () => {
     state = processEvent(state, { type: "GAME_STARTED", timestamp: 2, deck: [patate, ...makeDeck(20)] }).state;
     // p1 pose la Patate chaude devant p2, puis c'est le tour de p2.
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: patate.id, targetPlayerId: "p2", timestamp: 3 }).state;
-    state = { ...state, currentPlayerId: "p2" };
+    // currentPlayerId forcé manuellement (pas de vrai TURN_ENDED ici) : hasPlayedThisTurn
+    // doit être remis à false comme le ferait advanceTurn() normalement.
+    state = { ...state, currentPlayerId: "p2", hasPlayedThisTurn: false };
     return { state, patate };
   }
 
@@ -1612,7 +1667,7 @@ describe("Moteur — marqueur passif (Dinosaure)", () => {
     const dino = makeDinosaureCard();
     state = startGame(state, [dino, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: dino.id, timestamp: 3 }).state;
-    state = { ...state, currentPlayerId: "p2" };
+    state = { ...state, currentPlayerId: "p2", hasPlayedThisTurn: false };
 
     const dragon = makeCard({
       id: "dragon-1",
@@ -1642,7 +1697,7 @@ describe("Moteur — marqueur passif (Dinosaure)", () => {
     state = startGame(state, [dino, ...makeDeck(20)]);
     // p1 pose Dinosaure devant lui-même ; p2 vise p3 (non protégé) avec un Dragon.
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: dino.id, timestamp: 3 }).state;
-    state = { ...state, currentPlayerId: "p2" };
+    state = { ...state, currentPlayerId: "p2", hasPlayedThisTurn: false };
 
     const dragon = makeCard({
       id: "dragon-1",
@@ -1667,7 +1722,7 @@ describe("Moteur — marqueur passif (Dinosaure)", () => {
     const cadeaux = makeCard({ id: "cadeaux-1", name: "Cadeaux", effects: [{ type: "START_SIMULTANEOUS_VOTE", onYes: "ELIMINATE", onNo: "NOTHING" }] });
     state = startGame(state, [dino, cadeaux, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: dino.id, timestamp: 3 }).state;
-    state = { ...state, currentPlayerId: "p2" };
+    state = { ...state, currentPlayerId: "p2", hasPlayedThisTurn: false };
     state = updatePlayer(state, "p2", (p) => ({ ...p, hand: [...p.hand, cadeaux] }));
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p2", cardId: cadeaux.id, timestamp: 4 }).state;
 
@@ -1715,6 +1770,8 @@ describe("Moteur — aléatoire injecté côté service (Politique)", () => {
     const politique = makePolitiqueCard();
     state = startGame(state, [lock, politique, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: lock.id, timestamp: 3 }).state;
+    // Isole le comportement testé (Politique + Pioche verrouillée) de la règle "1 carte par tour".
+    state = { ...state, hasPlayedThisTurn: false };
 
     const shuffledOrder = makeDeck(10).map((c, i) => ({ ...c, id: `shuffled-${i}` }));
     const result = processEvent(state, {
@@ -2438,7 +2495,10 @@ describe("Moteur — fenêtre de dénonciation d'une carte réflexe instantanée
 
   it("reste ouverte si une autre carte (non réflexe) est jouée tant que le tour n'est pas terminé", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
-    const reflex = makeReflexCard();
+    // Carte réflexe synthétique qui accorde aussi PLAY_AGAIN, uniquement pour
+    // permettre à p1 de légitimement jouer une 2e carte dans le même tour
+    // (règle officielle : 1 carte par tour, sauf exception explicite).
+    const reflex = makeCard({ id: "index-reflexe-1", name: "Index réflexe", rarity: "etoile", effects: [{ type: "PLAY_AGAIN" }] });
     const filler = makeCard({ id: "filler-1", name: "Filler" });
     state = startGame(state, [reflex, filler, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: reflex.id, timestamp: 3 }).state;
@@ -2539,5 +2599,265 @@ describe("Moteur — décompte synchronisé automatisé (Nez à nez, Pied de nez
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
 
     expect(() => processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4 })).toThrow();
+  });
+});
+
+describe("Moteur — course au clic (Du chocolat !)", () => {
+  function makeChocoCard(mode: "firstLoses" | "lastLoses" | "onlyFirstSurvives", id = "choco-1") {
+    return makeCard({ id, name: "Du chocolat !", rarity: "etoile", effects: [{ type: "START_HAND_SLAP", mode }] });
+  }
+
+  it("ouvre pendingHandSlap avec tous les joueurs en jeu éligibles (porteur inclus)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeChocoCard("firstLoses");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 });
+
+    expect(result.state.pendingHandSlap).toEqual({
+      cardId: card.id,
+      holderId: "p1",
+      mode: "firstLoses",
+      eligiblePlayerIds: ["p1", "p2", "p3"],
+      order: [],
+    });
+  });
+
+  it("n'élimine personne tant que tous n'ont pas cliqué", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeChocoCard("firstLoses");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+
+    const result = processEvent(state, { type: "HAND_SLAPPED", playerId: "p2", timestamp: 4 });
+
+    expect(result.state.pendingHandSlap?.order).toEqual(["p2"]);
+    expect(result.state.players.every((p) => !p.isEliminated)).toBe(true);
+  });
+
+  it("un double-clic du même joueur est ignoré (idempotent)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeChocoCard("firstLoses");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p1", timestamp: 4 }).state;
+
+    const result = processEvent(state, { type: "HAND_SLAPPED", playerId: "p1", timestamp: 5 });
+
+    expect(result.state.pendingHandSlap?.order).toEqual(["p1"]);
+  });
+
+  it("firstLoses élimine le premier arrivé une fois tout le monde cliqué", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeChocoCard("firstLoses");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p2", timestamp: 4 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p3", timestamp: 5 }).state;
+
+    const result = processEvent(state, { type: "HAND_SLAPPED", playerId: "p1", timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
+    expect(result.state.pendingHandSlap).toBeNull();
+  });
+
+  it("lastLoses élimine le dernier arrivé", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeChocoCard("lastLoses");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p2", timestamp: 4 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p1", timestamp: 5 }).state;
+
+    const result = processEvent(state, { type: "HAND_SLAPPED", playerId: "p3", timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(false);
+  });
+
+  it("onlyFirstSurvives élimine tout le monde sauf le premier arrivé", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeChocoCard("onlyFirstSurvives");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p3", timestamp: 4 }).state;
+    state = processEvent(state, { type: "HAND_SLAPPED", playerId: "p1", timestamp: 5 }).state;
+
+    const result = processEvent(state, { type: "HAND_SLAPPED", playerId: "p2", timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(true);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+  });
+
+  it("bloque la fin de tour tant que la course n'est pas résolue", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeChocoCard("firstLoses");
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 }).state;
+
+    expect(() => processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 4 })).toThrow();
+  });
+});
+
+describe("Moteur — choix au moment du jeu (Vous avez gagné !)", () => {
+  function makeGagneCard(
+    condition: { kind: "bombsOnBoard"; threshold: number } | { kind: "noStarCardInAnyHand" } | { kind: "socialVote"; description: string },
+    id = "gagne-1",
+  ) {
+    return makeCard({
+      id,
+      name: "Vous avez gagné !",
+      effects: [{ type: "WIN_IF_CONDITION_ELSE_POINTS", condition, fallbackPoints: 5 }],
+    });
+  }
+
+  it("claimWin absent/false -> ajoute juste les points de repli, sans vérifier la condition", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeGagneCard({ kind: "bombsOnBoard", threshold: 3 });
+    state = startGame(state, [card, ...makeDeck(20)]);
+
+    const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: card.id, timestamp: 3 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.points).toBe(5);
+    expect(result.state.phase).toBe("playing");
+  });
+
+  it("claimWin=true + bombsOnBoard atteint -> victoire immédiate, sans vote", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeGagneCard({ kind: "bombsOnBoard", threshold: 3 });
+    state = startGame(state, [card, ...makeDeck(20)]);
+    // Place 3 Bombes directement sur la table (sans passer par le tour) pour isoler la vérification testée.
+    for (const bombId of ["b1", "b2", "b3"]) {
+      state = updatePlayer(state, "p2", (p) => ({
+        ...p,
+        playedCards: [...p.playedCards, { id: bombId, name: "Bombe", rarity: "normale", text: "", effects: [] }],
+      }));
+    }
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    });
+
+    expect(result.state.phase).toBe("ended");
+    expect(result.state.winnerIds).toEqual(["p1"]);
+  });
+
+  it("claimWin=true + bombsOnBoard non atteint -> rien ne se passe (ni victoire ni points)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeGagneCard({ kind: "bombsOnBoard", threshold: 3 });
+    state = startGame(state, [card, ...makeDeck(20)]);
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    });
+
+    expect(result.state.phase).toBe("playing");
+    expect(result.state.players.find((p) => p.id === "p1")!.points).toBe(0);
+  });
+
+  it("claimWin=true + noStarCardInAnyHand vrai -> victoire immédiate", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const card = makeGagneCard({ kind: "noStarCardInAnyHand" });
+    state = startGame(state, [card, ...makeDeck(20)]);
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    });
+
+    expect(result.state.phase).toBe("ended");
+    expect(result.state.winnerIds).toEqual(["p1"]);
+  });
+
+  it("claimWin=true + noStarCardInAnyHand faux (une carte Étoile en main) -> rien ne se passe", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const star = makeCard({ id: "star-1", name: "Une étoile", rarity: "etoile" });
+    const card = makeGagneCard({ kind: "noStarCardInAnyHand" });
+    state = startGame(state, [card, star, ...makeDeck(20)]);
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    });
+
+    expect(result.state.phase).toBe("playing");
+  });
+
+  it("claimWin=true + socialVote -> ouvre un vote à majorité des AUTRES joueurs", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
+    state = startGame(state, [card, ...makeDeck(20)]);
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    });
+
+    expect(result.state.pendingVote).toEqual({
+      mode: "winClaim",
+      cardId: card.id,
+      actorPlayerId: "p1",
+      description: "c'est son anniversaire",
+      eligiblePlayerIds: ["p2", "p3"],
+      votes: {},
+    });
+  });
+
+  it("socialVote : majorité de \"oui\" -> victoire immédiate de l'auteur", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    }).state;
+    state = processEvent(state, { type: "VOTE_CAST", playerId: "p2", choice: "oui", timestamp: 4 }).state;
+
+    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p3", choice: "oui", timestamp: 5 });
+
+    expect(result.state.phase).toBe("ended");
+    expect(result.state.winnerIds).toEqual(["p1"]);
+  });
+
+  it("socialVote : majorité de \"non\" -> rien ne se passe", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
+    state = startGame(state, [card, ...makeDeck(20)]);
+    state = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    }).state;
+    state = processEvent(state, { type: "VOTE_CAST", playerId: "p2", choice: "non", timestamp: 4 }).state;
+
+    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p3", choice: "non", timestamp: 5 });
+
+    expect(result.state.phase).toBe("playing");
+    expect(result.state.pendingVote).toBeNull();
   });
 });

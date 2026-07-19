@@ -15,6 +15,7 @@ import {
   passHotPotato,
   resetGameToLobby,
   resolveNoseCountdown,
+  slapHand,
   startDenunciationVote,
   startGame,
   stealPlayedCard,
@@ -90,6 +91,13 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
           { cardId: state.pendingNoseCountdown.cardId },
         );
       }
+      if (state.pendingHandSlap) {
+        throw new GameLogicError(
+          "Une course au clic est en cours, impossible de terminer le tour avant sa résolution",
+          "HAND_SLAP_PENDING",
+          { cardId: state.pendingHandSlap.cardId },
+        );
+      }
       // La fenêtre de réaction "Gros nul !" et celle de dénonciation d'une carte
       // réflexe instantanée se referment toutes les deux à la fin du tour courant.
       const stateWithoutBatch = clearOpenReflexWindow(clearEliminationBatch(state));
@@ -151,6 +159,8 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
       return toggleNoseTouch(state, event.playerId, event.touching);
     case "NOSE_COUNTDOWN_RESOLVED":
       return resolveNoseCountdown(state);
+    case "HAND_SLAPPED":
+      return slapHand(state, event.playerId);
     default: {
       const exhaustiveCheck: never = event;
       throw new Error(`Event inconnu: ${JSON.stringify(exhaustiveCheck)}`);

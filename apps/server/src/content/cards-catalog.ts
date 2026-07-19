@@ -93,6 +93,13 @@ function idFromRow(row: CatalogRow): string {
  * - Dragon/Laser/Trou noir/Pluie de flèches : élimination différée (fin de tour du porteur).
  * - Bouclier/Science/Vaisseau spatial/Supervitesse : redirigent la menace correspondante, sinon piochent 2.
  */
+/**
+ * Durée du décompte synchronisé de "Nez à nez"/"Pied de nez" (voir plus bas).
+ * Volontairement courte (retour utilisateur : "des secondes pour de vrai"
+ * rendait le rythme trop lent) — un seul endroit à modifier pour équilibrer.
+ */
+const NOSE_COUNTDOWN_SECONDS = 2;
+
 const DANGER_CARD: Card["effects"] = [
   { type: "PLACE_IN_FRONT_OF_TARGET" },
   { type: "ELIMINATE_AT_END_OF_TURN_IF_PRESENT" },
@@ -217,8 +224,8 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
   // state.ts. "Nez à nez" élimine ceux qui NE touchent PAS leur nez au compte
   // 3 ; "Pied de nez" élimine ceux qui touchent ENCORE leur nez au compte 4,
   // porteur inclus (le texte dit "tout joueur", pas "tout autre joueur").
-  "Nez à nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }],
-  "Pied de nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }],
+  "Nez à nez": [{ type: "START_NOSE_COUNTDOWN", seconds: NOSE_COUNTDOWN_SECONDS, eliminateIfTouching: false }],
+  "Pied de nez": [{ type: "START_NOSE_COUNTDOWN", seconds: NOSE_COUNTDOWN_SECONDS, eliminateIfTouching: true }],
 };
 
 /**
@@ -239,9 +246,97 @@ function resolveCadeauxEffects(description: string): Card["effects"] {
   return [];
 }
 
+/**
+ * "Vous avez gagné !" existe en 6 variantes (même nom, conditions de victoire
+ * différentes) — détectées via la colonne "commentaire" du CSV (labels propres
+ * déjà présents dans la source, ex: "variante condition: mois d'anniversaire"),
+ * plus fiable que de reparser le texte OCR bruité de la carte elle-même. 2
+ * conditions sont vérifiables par le serveur (bombes, cartes Étoile en main) ;
+ * les 4 autres (subjectives : taille, anniversaire, genre du groupe, couleur
+ * portée) ouvrent un vote à majorité — voir WIN_IF_CONDITION_ELSE_POINTS.
+ */
+function resolveVousAvezGagneEffects(commentaire: string): Card["effects"] {
+  const fallbackPoints = 5;
+  if (commentaire.includes("petite taille")) {
+    return [
+      {
+        type: "WIN_IF_CONDITION_ELSE_POINTS",
+        condition: { kind: "socialVote", description: "est la personne de plus petite taille encore en jeu" },
+        fallbackPoints,
+      },
+    ];
+  }
+  if (commentaire.includes("anniversaire")) {
+    return [
+      {
+        type: "WIN_IF_CONDITION_ELSE_POINTS",
+        condition: { kind: "socialVote", description: "c'est le mois de son anniversaire" },
+        fallbackPoints,
+      },
+    ];
+  }
+  if (commentaire.includes("tous les autres joueurs sont des hommes")) {
+    return [
+      {
+        type: "WIN_IF_CONDITION_ELSE_POINTS",
+        condition: { kind: "socialVote", description: "tous les autres joueurs en jeu sont des hommes et pas lui/elle" },
+        fallbackPoints,
+      },
+    ];
+  }
+  if (commentaire.includes("bombes face visible")) {
+    return [{ type: "WIN_IF_CONDITION_ELSE_POINTS", condition: { kind: "bombsOnBoard", threshold: 3 }, fallbackPoints }];
+  }
+  if (commentaire.includes("portent du bleu")) {
+    return [
+      {
+        type: "WIN_IF_CONDITION_ELSE_POINTS",
+        condition: { kind: "socialVote", description: "tous les joueurs encore en jeu portent du bleu visible" },
+        fallbackPoints,
+      },
+    ];
+  }
+  if (commentaire.includes("Étoile en main") || commentaire.includes("Etoile en main")) {
+    return [{ type: "WIN_IF_CONDITION_ELSE_POINTS", condition: { kind: "noStarCardInAnyHand" }, fallbackPoints }];
+  }
+  return [];
+}
+
+/**
+ * "Du chocolat !" existe en 3 variantes (même nom, résolution différente selon
+ * l'ordre d'arrivée) — même principe que "Vous avez gagné !", détectées via
+ * la colonne "commentaire" du CSV plutôt que le texte OCR bruité.
+ */
+function resolveDuChocolatEffects(commentaire: string): Card["effects"] {
+  if (commentaire.includes("PREMIER qui pose sa main est éliminé")) {
+    return [{ type: "START_HAND_SLAP", mode: "firstLoses" }];
+  }
+  if (commentaire.includes("DERNIER qui pose sa main est éliminé")) {
+    return [{ type: "START_HAND_SLAP", mode: "lastLoses" }];
+  }
+  if (commentaire.includes("TOUS éliminés sauf le premier")) {
+    return [{ type: "START_HAND_SLAP", mode: "onlyFirstSurvives" }];
+  }
+  return [];
+}
+
+// Variantes détectées via la colonne "commentaire" du CSV (labels propres),
+// contrairement à "Cadeaux" détectée via row.description — voir toCard().
+const COMMENTAIRE_VARIANT_RESOLVERS: Record<string, (commentaire: string) => Card["effects"]> = {
+  "Vous avez gagné !": resolveVousAvezGagneEffects,
+  "Du chocolat !": resolveDuChocolatEffects,
+};
+
 function toCard(row: CatalogRow): Card {
   const id = idFromRow(row);
-  const effects = row.nom === "Cadeaux" ? resolveCadeauxEffects(row.description) : (AUTOMATED_EFFECTS[row.nom] ?? []);
+  let effects: Card["effects"];
+  if (row.nom === "Cadeaux") {
+    effects = resolveCadeauxEffects(row.description);
+  } else if (row.nom in COMMENTAIRE_VARIANT_RESOLVERS) {
+    effects = COMMENTAIRE_VARIANT_RESOLVERS[row.nom]!(row.commentaire);
+  } else {
+    effects = AUTOMATED_EFFECTS[row.nom] ?? [];
+  }
   return {
     id,
     name: row.nom,

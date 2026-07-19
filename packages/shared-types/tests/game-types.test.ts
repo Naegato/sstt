@@ -38,6 +38,8 @@ describe("GameState models N players correctly", () => {
       lastEliminationBatch: null,
       lastPlayedCard: null,
       stolenThisTurn: false,
+      hasPlayedThisTurn: false,
+      pendingHandSlap: null,
       pendingFinito: null,
       turnDirection: 1,
       pendingChoice: null,
