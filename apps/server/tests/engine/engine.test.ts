@@ -20,6 +20,21 @@ describe("Moteur — boucle de base (rejoindre → démarrer → piocher → jou
     expect(state.drawPile).toHaveLength(6); // 10 - 2*2
   });
 
+  it("GAME_STARTED.startingPlayerId fixe le premier joueur (règle : tirage au hasard, pas le premier arrivé)", () => {
+    let state = createInitialState("room-1");
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 }).state;
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 }).state;
+
+    state = processEvent(state, {
+      type: "GAME_STARTED",
+      timestamp: 3,
+      deck: makeDeck(10),
+      startingPlayerId: "p2",
+    }).state;
+
+    expect(state.currentPlayerId).toBe("p2");
+  });
+
   it("refuse qu'un joueur rejoigne une partie déjà commencée", () => {
     let state = createInitialState("room-1");
     state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 }).state;
@@ -60,6 +75,26 @@ describe("Moteur — boucle de base (rejoindre → démarrer → piocher → jou
     expect(state.players.find((p) => p.id === "p1")!.hand).toHaveLength(2);
 
     state = processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 5 }).state;
+    expect(state.currentPlayerId).toBe("p2");
+  });
+
+  it("refuse un TURN_ENDED envoyé par quelqu'un qui n'est pas le joueur courant (bug réel en prod : double appel depuis 2 onglets du même joueur faisait rebondir le tour)", () => {
+    let state = createInitialState("room-1");
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 }).state;
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 }).state;
+    state = processEvent(state, { type: "GAME_STARTED", timestamp: 3, deck: makeDeck(10) }).state;
+    expect(state.currentPlayerId).toBe("p1");
+
+    // p2 n'est pas le joueur courant : refusé, ne doit surtout pas avancer le tour.
+    expect(() => processEvent(state, { type: "TURN_ENDED", playerId: "p2", timestamp: 4 })).toThrow();
+    expect(state.currentPlayerId).toBe("p1");
+
+    state = processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 5 }).state;
+    expect(state.currentPlayerId).toBe("p2");
+
+    // Un second TURN_ENDED dupliqué au nom de p1 (déjà plus le joueur courant)
+    // doit être refusé, pas faire rebondir le tour vers p1.
+    expect(() => processEvent(state, { type: "TURN_ENDED", playerId: "p1", timestamp: 6 })).toThrow();
     expect(state.currentPlayerId).toBe("p2");
   });
 
@@ -533,6 +568,10 @@ describe("Moteur — vote simultané (carte Cadeaux)", () => {
     expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false); // a dit oui
     expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true); // a dit non
     expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(true); // a dit non
+    expect(result.sideEffects).toContainEqual({
+      type: "VOTES_REVEALED",
+      votes: { p1: "oui", p2: "non", p3: "non" },
+    });
   });
 
   it("variante serpents : ceux qui répondent 'oui' sont éliminés", () => {
@@ -653,6 +692,33 @@ describe("Moteur — GIVE_CARDS_TO_TARGET (Quatre à la suite)", () => {
     });
 
     expect(result.state.players.find((p) => p.id === "p1")!.hand.length).toBe(0);
+  });
+
+  it("donne les cartes choisies explicitement par le joueur (CardPlayedEvent.givenCardIds), pas arbitrairement les premières", () => {
+    let state = createInitialState("room-1");
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 }).state;
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 }).state;
+
+    const quatre = makeCard({
+      id: "quatre-1",
+      effects: [{ type: "GIVE_CARDS_TO_TARGET", count: 1 }],
+    });
+    // Main de p1 après distribution : [quatre, cardB] (2 cartes de départ).
+    state = processEvent(state, { type: "GAME_STARTED", timestamp: 3, deck: [quatre, ...makeDeck(20)] }).state;
+    const p1Before = state.players.find((p) => p.id === "p1")!;
+    const otherCardId = p1Before.hand.find((c) => c.id !== quatre.id)!.id;
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: quatre.id,
+      targetPlayerId: "p2",
+      givenCardIds: [otherCardId],
+      timestamp: 4,
+    });
+
+    const p2 = result.state.players.find((p) => p.id === "p2")!;
+    expect(p2.hand.some((c) => c.id === otherCardId)).toBe(true);
   });
 });
 
@@ -2471,6 +2537,10 @@ describe("Moteur — choix simultané à options multiples (Bataille)", () => {
     expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
     expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
     expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
+    expect(result.sideEffects).toContainEqual({
+      type: "CHOICES_REVEALED",
+      choices: { p1: "pierre", p2: "feuille", p3: "ciseaux" },
+    });
   });
 
   it("variante PIERRE : élimine celui qui a choisi \"pierre\", pas celui qui a choisi \"feuille\" (bug réel corrigé : les 4 variantes éliminaient toujours \"feuille\")", () => {

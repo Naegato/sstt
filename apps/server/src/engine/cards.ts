@@ -103,7 +103,7 @@ function resolveForcedCardPlay(
 
   for (const effect of card.effects) {
     if (effect.type === "CANCEL_LAST_PLAYED_CARD") continue;
-    const result = applyOneEffect(next, effect, card, playerId, effectTargetId, undefined, undefined, undefined);
+    const result = applyOneEffect(next, effect, card, playerId, effectTargetId, undefined, undefined, undefined, undefined);
     next = result.state;
     sideEffects.push(...result.sideEffects);
     if (next.phase === "ended") break;
@@ -125,6 +125,7 @@ function applyOneEffect(
   shuffledDrawPileOrder: Card[] | undefined,
   stolenCardId: CardId | undefined,
   claimWin: boolean | undefined,
+  givenCardIds: CardId[] | undefined,
 ): EngineResult {
   switch (effect.type) {
     case "DRAW_CARDS":
@@ -321,10 +322,24 @@ function applyOneEffect(
         throw new GameLogicError("Cet effet nécessite un joueur cible", "MISSING_TARGET", { cardId: card.id });
       }
       const actingPlayer = findPlayer(state, playerId);
-      const actualCount = Math.min(effect.count, actingPlayer.hand.length);
-      const givenCards = actingPlayer.hand.slice(0, actualCount);
+      // Cartes choisies explicitement par le joueur (voir CardPlayedEvent.givenCardIds,
+      // calculé côté client — un choix pur, pas un aléatoire, contrairement à
+      // shuffledDrawPileOrder/stolenCardId). Repli sur les `count` premières de la
+      // main si absent (ex: carte volée puis forcée par Ninjas, aucun choix possible
+      // dans ce flux "immédiat" — même limite déjà assumée pour les autres effets
+      // ciblés forcés par Ninjas).
+      const validSelectedIds = (givenCardIds ?? [])
+        .filter((id) => actingPlayer.hand.some((c) => c.id === id))
+        .slice(0, effect.count);
+      const selectedCards =
+        validSelectedIds.length > 0
+          ? actingPlayer.hand.filter((c) => validSelectedIds.includes(c.id))
+          : actingPlayer.hand.slice(0, Math.min(effect.count, actingPlayer.hand.length));
+      const givenCards = selectedCards;
+      const actualCount = givenCards.length;
+      const givenIds = new Set(givenCards.map((c) => c.id));
 
-      let next = updatePlayer(state, playerId, (p) => ({ ...p, hand: p.hand.slice(actualCount) }));
+      let next = updatePlayer(state, playerId, (p) => ({ ...p, hand: p.hand.filter((c) => !givenIds.has(c.id)) }));
       next = updatePlayer(next, targetPlayerId, (p) => ({ ...p, hand: [...p.hand, ...givenCards] }));
 
       return { state: next, sideEffects: [{ type: "CARDS_GIVEN", playerId: targetPlayerId, count: actualCount }] };
@@ -579,6 +594,7 @@ export function playCard(state: GameState, event: CardPlayedEvent): EngineResult
       event.shuffledDrawPileOrder,
       event.stolenCardId,
       event.claimWin,
+      event.givenCardIds,
     );
     next = result.state;
     sideEffects.push(...result.sideEffects);

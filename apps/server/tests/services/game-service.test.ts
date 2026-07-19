@@ -46,6 +46,22 @@ describe("GameService", () => {
     }
   });
 
+  it("startGame tire le premier joueur au hasard (règle officielle), pas toujours le premier arrivé", async () => {
+    const { gameService } = makeService();
+    gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 });
+    gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 });
+
+    const originalRandom = Math.random;
+    try {
+      // Force le tirage sur le second joueur (index 1 sur 2).
+      Math.random = () => 0.9;
+      const result = await gameService.startGame("room-1");
+      expect(result.state.currentPlayerId).toBe("p2");
+    } finally {
+      Math.random = originalRandom;
+    }
+  });
+
   it("startGame charge le vrai catalogue avec une distribution équilibrée des cartes Étoile", async () => {
     const { gameService } = makeService();
     gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 });
@@ -79,7 +95,10 @@ describe("GameService", () => {
     gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 });
 
     const started = await gameService.startGame("room-1");
-    const p1 = started.state.players.find((p) => p.id === "p1")!;
+    // Premier joueur tiré au hasard depuis cette session (règle officielle) : on
+    // travaille avec le joueur courant réel plutôt que de supposer p1.
+    const current = started.state.players.find((p) => p.id === started.state.currentPlayerId)!;
+    const other = started.state.players.find((p) => p.id !== current.id)!;
     // Le vrai catalogue peut distribuer une carte qui ouvre un vote ou exige d'être
     // éliminé (Cadeaux, Vie supplémentaire, Gros nul !...) : endTurn échouerait alors
     // légitimement (VOTE_PENDING / NOT_ELIGIBLE_FOR_REACTION), sans rapport avec ce
@@ -118,24 +137,29 @@ describe("GameService", () => {
       "STEAL_RANDOM_CARD_AND_FORCE_PLAY",
       "SWAP_POSITION_AND_HAND",
     ]);
-    const cardToPlay = p1.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)));
+    const cardToPlay = current.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)));
     if (!cardToPlay) return; // hand entièrement composée de cartes bloquantes, cas trop rare pour être testé ici
 
     // Cible toujours fournie : le vrai catalogue peut aussi distribuer une carte qui
     // en exige une (Dragon, Réforme des retraites...) — sinon MISSING_TARGET, flaky.
-    gameService.playCard("room-1", "p1", cardToPlay.id, "p2");
-    const result = gameService.endTurn("room-1", "p1");
+    gameService.playCard("room-1", current.id, cardToPlay.id, other.id);
+    const result = gameService.endTurn("room-1", current.id);
 
-    expect(result.state.currentPlayerId).toBe("p2");
-    expect(result.state.players.find((p) => p.id === "p2")!.hand.length).toBe(3); // 2 de départ + pioche auto
-    expect(result.sideEffects.some((e) => e.type === "CARDS_DRAWN" && e.playerId === "p2")).toBe(true);
+    expect(result.state.currentPlayerId).toBe(other.id);
+    expect(result.state.players.find((p) => p.id === other.id)!.hand.length).toBe(3); // 2 de départ + pioche auto
+    expect(result.sideEffects.some((e) => e.type === "CARDS_DRAWN" && e.playerId === other.id)).toBe(true);
   });
 
   it("playCard repioche automatiquement pour le même joueur quand la carte accorde PLAY_AGAIN", async () => {
     const { gameService, roomManager } = makeService();
     gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 });
     gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 });
+    // Premier joueur tiré au hasard depuis cette session (règle officielle) :
+    // figé sur p1 ici pour garder ce test déterministe.
+    const originalRandom = Math.random;
+    Math.random = () => 0;
     await gameService.startGame("room-1");
+    Math.random = originalRandom;
 
     // Injecte directement une carte "rejouez un tour" dans la main de p1 (contourne le tirage aléatoire réel).
     const bombe = { id: "bombe-test", name: "Bombe", rarity: "normale" as const, text: "", effects: [{ type: "PLAY_AGAIN" as const }] };
@@ -158,7 +182,12 @@ describe("GameService", () => {
     const { gameService, roomManager } = makeService();
     gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 });
     gameService.handleEvent("room-1", { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 });
+    // Premier joueur tiré au hasard depuis cette session (règle officielle) :
+    // figé sur p1 ici pour garder ce test déterministe (voir commentaire plus bas).
+    const originalRandom = Math.random;
+    Math.random = () => 0;
     await gameService.startGame("room-1");
+    Math.random = originalRandom;
 
     const illumination = {
       id: "illum-test",

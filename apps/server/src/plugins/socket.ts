@@ -15,6 +15,7 @@ type PlayCardPayload = {
   targetPlayerId?: string;
   playedAsInterrupt?: boolean;
   claimWin?: boolean;
+  givenCardIds?: string[];
 };
 type EndTurnPayload = { roomId: string; playerId: string };
 type CastVotePayload = { roomId: string; playerId: string; choice: VoteChoice };
@@ -76,9 +77,17 @@ export async function registerSocket(fastify: FastifyInstance): Promise<{ gameSe
 
     socket.on(
       CLIENT_EVENTS.PLAY_CARD,
-      ({ roomId, playerId, cardId, targetPlayerId, playedAsInterrupt, claimWin }: PlayCardPayload) => {
+      ({ roomId, playerId, cardId, targetPlayerId, playedAsInterrupt, claimWin, givenCardIds }: PlayCardPayload) => {
         try {
-          const result = gameService.playCard(roomId, playerId, cardId, targetPlayerId, playedAsInterrupt, claimWin);
+          const result = gameService.playCard(
+            roomId,
+            playerId,
+            cardId,
+            targetPlayerId,
+            playedAsInterrupt,
+            claimWin,
+            givenCardIds,
+          );
           broadcastResult(roomId, result);
         } catch (err) {
           emitError(socket, err);

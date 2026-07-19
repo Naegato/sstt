@@ -91,7 +91,7 @@ export function addPlayer(state: GameState, playerId: PlayerId, name: string): G
 }
 
 /** Distribue la main de départ à chaque joueur depuis le deck déjà mélangé (voir GameStartedEvent). */
-export function startGame(state: GameState, deck: Card[]): GameState {
+export function startGame(state: GameState, deck: Card[], startingPlayerId?: PlayerId): GameState {
   let remainingDeck = deck;
   const players = state.players.map((player) => {
     const hand = remainingDeck.slice(0, STARTING_HAND_SIZE);
@@ -99,11 +99,19 @@ export function startGame(state: GameState, deck: Card[]): GameState {
     return { ...player, hand };
   });
 
+  // Règle officielle : le premier joueur est déterminé au hasard, pas "le
+  // premier qui a rejoint la room" — le tirage est fait côté service (voir
+  // GameStartedEvent.startingPlayerId), retombe sur l'ancien comportement
+  // (premier de la liste) si absent, pour rester compatible avec les tests
+  // qui construisent l'event à la main sans ce champ.
+  const startingPlayer =
+    (startingPlayerId != null ? players.find((p) => p.id === startingPlayerId) : undefined) ?? players[0];
+
   return {
     ...state,
     phase: "playing",
     players,
-    currentPlayerId: players[0]?.id ?? null,
+    currentPlayerId: startingPlayer?.id ?? null,
     drawPile: remainingDeck,
   };
 }
@@ -700,6 +708,7 @@ export function submitChoice(state: GameState, playerId: PlayerId, value: string
       return { state: next, sideEffects };
     }
     next = { ...next, pendingChoice: null };
+    sideEffects.push({ type: "CHOICES_REVEALED", choices: { ...pendingChoice.choices } as Record<PlayerId, string> });
     const losingValue =
       pendingChoice.losingShape === "differentFromActor" ? pendingChoice.choices[pendingChoice.actorPlayerId] : pendingChoice.losingShape;
     // "differentFromActor" : perdent ceux qui n'ont PAS choisi la même forme que
@@ -733,6 +742,10 @@ export function submitChoice(state: GameState, playerId: PlayerId, value: string
     return { state: next, sideEffects };
   }
   next = { ...next, pendingChoice: null };
+  sideEffects.push({
+    type: "CHOICES_REVEALED",
+    choices: Object.fromEntries(Object.entries(pendingChoice.choices).map(([id, v]) => [id, String(v)])),
+  });
   const sum = pendingChoice.eligiblePlayerIds.reduce((total, id) => total + (pendingChoice.choices[id] ?? 0), 0);
   if (isPrime(sum)) {
     const result = declareWinners(next, [pendingChoice.actorPlayerId]);
@@ -871,6 +884,7 @@ export function castVote(state: GameState, playerId: PlayerId, choice: VoteChoic
     return { state: next, sideEffects };
   }
   next = { ...next, pendingVote: null };
+  sideEffects.push({ type: "VOTES_REVEALED", votes: { ...pendingVote.votes } as Record<PlayerId, string> });
 
   if (pendingVote.mode === "simultaneous") {
     const toEliminate: PlayerId[] = [];

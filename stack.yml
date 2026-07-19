@@ -45,6 +45,22 @@ services:
     image: ghcr.io/naegato/sstt/web:latest
     ports:
       - "3010:3000"
+    # apps/web/src/lib/session.ts vérifie le JWT localement (Server Components,
+    # sans repasser par le réseau) avec ce secret — DOIT être identique à celui
+    # du service `server` ci-dessus, sinon la vérification échoue toujours
+    # silencieusement (repli sur "dev-secret-change-me") et aucune session
+    # n'est jamais reconnue côté web, même après une connexion réussie
+    # (cookie posé correctement par `server`, mais jamais lu avec succès par
+    # `web`) : bug réel constaté en prod sur OAuth Google/Discord ET
+    # email/mot de passe, aucune erreur visible, juste "jamais connecté".
+    command:
+      - sh
+      - -c
+      - >
+        export JWT_SECRET="$$(cat /run/secrets/jwt_secret)";
+        exec bun run server.js
+    secrets:
+      - jwt_secret
     deploy:
       replicas: 1
       restart_policy:

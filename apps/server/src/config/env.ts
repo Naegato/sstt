@@ -5,8 +5,13 @@ export const config = {
   DATABASE_URL: process.env.DATABASE_URL ?? "postgres://card_game:card_game@localhost:5432/card_game",
   JWT_SECRET: process.env.JWT_SECRET ?? "dev-secret-change-me",
   COOKIE_NAME: "card_game_session",
-  /** En dev sur http://localhost, un cookie "secure" ne serait jamais envoyé. */
-  COOKIE_SECURE: process.env.NODE_ENV === "production",
+  /**
+   * En dev sur http://localhost, un cookie "secure" ne serait jamais envoyé.
+   * Dérivé de WEB_ORIGIN (https:// en prod) plutôt que de NODE_ENV : ce
+   * dernier n'est jamais positionné sur le déploiement Docker (stack.yml), donc
+   * cette valeur restait silencieusement `false` en prod avec l'ancien calcul.
+   */
+  COOKIE_SECURE: (process.env.WEB_ORIGIN ?? "http://localhost:3000").startsWith("https://"),
 
   WEB_ORIGIN: process.env.WEB_ORIGIN ?? "http://localhost:3000",
 

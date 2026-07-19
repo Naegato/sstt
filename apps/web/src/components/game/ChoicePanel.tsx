@@ -1,10 +1,11 @@
-import type { Card as CardType, PendingChoice, PlayerId } from "@card-game/shared-types";
+import type { Card as CardType, PendingChoice, Player, PlayerId } from "@card-game/shared-types";
 import { getPublicCardPrompt } from "@/lib/cardText";
 
 type ChoicePanelProps = {
   pendingChoice: PendingChoice;
   card: CardType | undefined;
   selfPlayerId: PlayerId | null;
+  players: Player[];
   onChoose: (value: string) => void;
 };
 
@@ -29,7 +30,7 @@ const CHOICE_OPTIONS: Record<PendingChoice["mode"], { title: string; options: { 
     },
   };
 
-export function ChoicePanel({ pendingChoice, card, selfPlayerId, onChoose }: ChoicePanelProps) {
+export function ChoicePanel({ pendingChoice, card, selfPlayerId, players, onChoose }: ChoicePanelProps) {
   const hasChosen = selfPlayerId ? pendingChoice.choices[selfPlayerId] !== undefined : false;
   const chosenCount = Object.keys(pendingChoice.choices).length;
   const { title, options } = CHOICE_OPTIONS[pendingChoice.mode];
@@ -37,6 +38,7 @@ export function ChoicePanel({ pendingChoice, card, selfPlayerId, onChoose }: Cho
   // carte demande explicitement de ne pas lire à voix haute — seul le prompt
   // public (entre guillemets sur la carte) doit apparaître ici, jamais la règle.
   const publicPrompt = getPublicCardPrompt(card);
+  const nameOf = (id: PlayerId) => players.find((p) => p.id === id)?.name ?? id;
 
   return (
     <div className="vote-panel">
@@ -45,6 +47,15 @@ export function ChoicePanel({ pendingChoice, card, selfPlayerId, onChoose }: Cho
       <p>
         {chosenCount} / {pendingChoice.eligiblePlayerIds.length} joueurs ont choisi.
       </p>
+      {/* Qui a déjà choisi, jamais quoi — révélé après résolution (voir
+          ChoiceRevealOverlay), suspense préservé pendant le choix. */}
+      <ul className="vote-panel__status-list">
+        {pendingChoice.eligiblePlayerIds.map((id) => (
+          <li key={id} className={pendingChoice.choices[id] !== undefined ? "voted" : "pending"}>
+            {pendingChoice.choices[id] !== undefined ? "✓" : "…"} {nameOf(id)}
+          </li>
+        ))}
+      </ul>
       {hasChosen ? (
         <p>Ton choix est enregistré, en attente des autres joueurs...</p>
       ) : (

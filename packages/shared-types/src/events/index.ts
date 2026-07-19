@@ -16,6 +16,13 @@ export type GameStartedEvent = BaseEvent & {
    * pour garantir que rejouer les mêmes events produit toujours le même état.
    */
   deck: Card[];
+  /**
+   * Joueur tiré au sort côté service pour commencer (règle officielle : "déterminer
+   * le premier joueur au hasard", pas "le premier qui rejoint la room") — même
+   * principe que `deck`, l'aléatoire est calculé avant l'event, jamais dans le
+   * moteur pur.
+   */
+  startingPlayerId?: PlayerId;
 };
 
 export type CardDrawnEvent = BaseEvent & {
@@ -58,6 +65,15 @@ export type CardPlayedEvent = BaseEvent & {
    * absent) — même principe de choix au moment du jeu que `playedAsInterrupt`.
    */
   claimWin?: boolean;
+  /**
+   * Réservé aux cartes qui donnent des cartes à une cible (ex: "Quatre à la
+   * suite", effet `GIVE_CARDS_TO_TARGET`) : ids des cartes choisies par le
+   * joueur dans sa propre main pour les donner — un choix pur du joueur, pas
+   * un aléatoire, contrairement à `shuffledDrawPileOrder`/`stolenCardId`.
+   * Repli sur les premières cartes de la main si absent ou invalide (ex:
+   * carte volée puis forcée par Ninjas, aucun choix possible dans ce flux).
+   */
+  givenCardIds?: CardId[];
 };
 
 /** Confirmation déclarative qu'un effet manuel (texte affiché) a bien été exécuté. */

@@ -495,16 +495,24 @@ button {
   --rot: 8deg;
 }
 
-/* ---------- Table: plateau en légère perspective ---------- */
+/* ---------- Table: plateau en pseudo-perspective (2D, pas de vrai rotateX) ---------- */
+/* Un vrai rotateX + perspective/preserve-3d a longtemps habillé ce conteneur,
+   mais tout le plateau interactif (main, plateaux adverses, défausse) vit à
+   l'intérieur : bug réel rapporté en prod sur grand écran (>640px, donc en
+   dehors du repli mobile ci-dessous) — plus aucune carte cliquable. Un vrai
+   transform 3D sur un ancêtre dont les enfants ont eux-mêmes des transforms
+   (fan des cartes, hover des plateaux) casse le hit-testing des clics dans
+   Chrome dans certaines conditions de compositing. L'effet "table légèrement
+   inclinée" est reproduit ici en 2D (léger `rotate`, jamais de `rotateX`) —
+   aucun risque de ce genre, car un simple rotate 2D ne modifie pas le calcul
+   de hit-testing des descendants. */
 
 .table {
-  perspective: 1800px;
   margin: 1rem 0 2rem;
 }
 
 .table__surface {
-  transform: rotateX(9deg);
-  transform-style: preserve-3d;
+  transform: rotate(-0.3deg);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 12%), var(--board);
   border: 4px solid var(--ink);
   border-radius: 22px;
@@ -800,6 +808,33 @@ button {
   gap: 0.5rem;
 }
 
+/* ---------- Sélection de cartes à donner (Quatre à la suite) ---------- */
+
+.give-cards-picker__hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+}
+
+.give-cards-picker__card {
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--board);
+  color: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  padding: 0.4rem 0.7rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.give-cards-picker__card--selected {
+  background: var(--accent-zone);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+}
+
 .player-card__skull {
   position: absolute;
   top: -10px;
@@ -1052,6 +1087,64 @@ button {
   .play-announcement__holder,
   .play-announcement__card {
     animation: none;
+  }
+}
+
+/* ---------- Révélation "qui a voté/choisi quoi" ---------- */
+
+.choice-reveal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(360px, 90vw);
+}
+
+.choice-reveal__entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  padding: 0.6rem 1rem;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  animation: choice-reveal-pop 0.35s ease forwards;
+}
+
+.choice-reveal__entry:nth-child(1) { animation-delay: 0s; }
+.choice-reveal__entry:nth-child(2) { animation-delay: 0.15s; }
+.choice-reveal__entry:nth-child(3) { animation-delay: 0.3s; }
+.choice-reveal__entry:nth-child(4) { animation-delay: 0.45s; }
+.choice-reveal__entry:nth-child(5) { animation-delay: 0.6s; }
+.choice-reveal__entry:nth-child(n + 6) { animation-delay: 0.75s; }
+
+.choice-reveal__name {
+  font-weight: 700;
+}
+
+.choice-reveal__value {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+}
+
+@keyframes choice-reveal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choice-reveal__entry {
+    animation: none;
+    opacity: 1;
   }
 }
 
@@ -1357,6 +1450,25 @@ button {
   display: flex;
   gap: 0.75rem;
   margin-top: 0.5rem;
+}
+
+.vote-panel__status-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.vote-panel__status-list li.voted {
+  color: var(--accent-zone);
+  font-weight: 700;
+}
+
+.vote-panel__status-list li.pending {
+  opacity: 0.65;
 }
 
 .catalog-modal__panel {

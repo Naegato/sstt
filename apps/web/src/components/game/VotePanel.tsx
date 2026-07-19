@@ -64,6 +64,16 @@ export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePa
       <p>
         {votedCount} / {pendingVote.eligiblePlayerIds.length} joueurs ont voté.
       </p>
+      {/* Qui a déjà voté, jamais ce qu'ils ont voté — le secret reste entier
+          pendant le vote (voir extractChoiceReveal/ChoiceRevealOverlay pour la
+          révélation, une fois tout le monde passé). */}
+      <ul className="vote-panel__status-list">
+        {pendingVote.eligiblePlayerIds.map((id) => (
+          <li key={id} className={pendingVote.votes[id] !== undefined ? "voted" : "pending"}>
+            {pendingVote.votes[id] !== undefined ? "✓" : "…"} {nameOf(id)}
+          </li>
+        ))}
+      </ul>
       {hasVoted ? (
         <p>Ton vote est enregistré, en attente des autres joueurs...</p>
       ) : (

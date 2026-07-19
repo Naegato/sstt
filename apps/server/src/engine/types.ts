@@ -29,7 +29,17 @@ export type SideEffect =
   | { type: "NOSE_COUNTDOWN_STARTED"; seconds: number }
   | { type: "NOSE_TOUCH_CHANGED"; playerId: PlayerId; touching: boolean }
   | { type: "HAND_SLAPPED"; playerId: PlayerId }
-  | { type: "HAND_SLAP_STARTED"; cardId: CardId };
+  | { type: "HAND_SLAP_STARTED"; cardId: CardId }
+  /**
+   * Émis une fois que tous les joueurs concernés ont voté/choisi, juste avant
+   * résolution — demande explicite de l'utilisateur ("voir qui a voté quoi").
+   * Pendant le vote/choix, seul `pendingVote.votes`/`pendingChoice.choices`
+   * (clés seulement) indique qui a déjà agi ; ce side effect porte les VALEURS
+   * réelles, réservées à un récapitulatif affiché une fois tout révélé — jamais
+   * pendant que le vote est encore en cours (suspense préservé).
+   */
+  | { type: "VOTES_REVEALED"; votes: Record<PlayerId, string> }
+  | { type: "CHOICES_REVEALED"; choices: Record<PlayerId, string> };
 
 export type EngineResult = {
   state: GameState;

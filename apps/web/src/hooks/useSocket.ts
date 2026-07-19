@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CARD_ANNOUNCEMENT_MS,
+  CHOICE_REVEAL_MS,
   CLIENT_EVENTS,
   SERVER_EVENTS,
   type GameState,
@@ -11,6 +12,7 @@ import {
 import { getSocket } from "@/lib/socket";
 import { useGameStore } from "@/stores/gameStore";
 import { extractPlayAnnouncements, type AnySideEffect, type PlayAnnouncement } from "@/lib/playAnnouncements";
+import { extractChoiceReveal, type ChoiceReveal } from "@/lib/choiceReveal";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -27,6 +29,11 @@ export function useSocket() {
   // explicite de l'utilisateur ("le jeu va trop vite"). Les mises à jour
   // s'enchaînent via une queue de promesses pour ne jamais en sauter une.
   const [announcement, setAnnouncement] = useState<PlayAnnouncement | null>(null);
+  // "Qui a voté/choisi quoi" (Bataille, Chiffre, Cadeaux...) : révélé une fois
+  // la résolution actée côté moteur, jamais pendant que le vote est encore en
+  // cours — demande explicite de l'utilisateur. Même file d'attente que les
+  // annonces de cartes, pour ne jamais chevaucher deux révélations.
+  const [choiceReveal, setChoiceReveal] = useState<ChoiceReveal | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
@@ -35,12 +42,18 @@ export function useSocket() {
 
     const onStateUpdate = (payload: { state: GameState; sideEffects?: AnySideEffect[] }) => {
       const announcements = extractPlayAnnouncements(payload.state, payload.sideEffects);
+      const reveal = extractChoiceReveal(payload.state, payload.sideEffects);
       queueRef.current = queueRef.current.then(async () => {
         for (const next of announcements) {
           setAnnouncement(next);
           await sleep(CARD_ANNOUNCEMENT_MS);
         }
         setAnnouncement(null);
+        if (reveal) {
+          setChoiceReveal(reveal);
+          await sleep(CHOICE_REVEAL_MS);
+          setChoiceReveal(null);
+        }
         updateGameState(payload.state);
       });
     };
@@ -83,6 +96,7 @@ export function useSocket() {
     targetPlayerId?: string,
     playedAsInterrupt?: boolean,
     claimWin?: boolean,
+    givenCardIds?: string[],
   ) => {
     socketRef.current.emit(CLIENT_EVENTS.PLAY_CARD, {
       roomId,
@@ -91,6 +105,7 @@ export function useSocket() {
       targetPlayerId,
       playedAsInterrupt,
       claimWin,
+      givenCardIds,
     });
   };
 
@@ -149,5 +164,6 @@ export function useSocket() {
     toggleNoseTouch,
     slapHand,
     announcement,
+    choiceReveal,
   };
 }

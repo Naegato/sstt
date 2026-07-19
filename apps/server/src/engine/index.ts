@@ -63,12 +63,24 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
     case "PLAYER_JOINED":
       return { state: addPlayer(state, event.playerId, event.playerName), sideEffects: [] };
     case "GAME_STARTED":
-      return { state: startGame(state, event.deck), sideEffects: [] };
+      return { state: startGame(state, event.deck, event.startingPlayerId), sideEffects: [] };
     case "CARD_DRAWN":
       return drawAtTurnStart(state, event.playerId);
     case "CARD_PLAYED":
       return playCard(state, event);
     case "TURN_ENDED": {
+      // Garde-fou manquant jusqu'ici (contrairement à stealPlayedCard/passHotPotato
+      // qui le vérifient déjà) : sans lui, un END_TURN dupliqué (ex: 2 onglets ouverts
+      // par le même joueur, le useEffect de fin de tour automatique de GameBoard.tsx
+      // se déclenchant dans chacun) fait avancer le tour DEUX fois d'affilée sans
+      // erreur — le second avancement ramène immédiatement le tour au joueur
+      // précédent, symptôme observé en prod : "le tour ne semble jamais avancer".
+      if (state.currentPlayerId !== event.playerId) {
+        throw new GameLogicError("Ce n'est pas le tour de ce joueur", "NOT_YOUR_TURN", {
+          playerId: event.playerId,
+          currentPlayerId: state.currentPlayerId,
+        });
+      }
       if (state.pendingVote) {
         throw new GameLogicError(
           "Un vote est en cours, impossible de terminer le tour avant sa résolution",

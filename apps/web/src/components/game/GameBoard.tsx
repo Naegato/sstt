@@ -6,6 +6,7 @@ import { useGameStore } from "@/stores/gameStore";
 import { useSocket } from "@/hooks/useSocket";
 import { CardZoomModal } from "./CardZoomModal";
 import { ChoicePanel } from "./ChoicePanel";
+import { ChoiceRevealOverlay } from "./ChoiceRevealOverlay";
 import { DenunciationPanel } from "./DenunciationPanel";
 import { DiscardPileModal } from "./DiscardPileModal";
 import { HandSlapPanel } from "./HandSlapPanel";
@@ -34,6 +35,7 @@ export function GameBoard() {
     toggleNoseTouch,
     slapHand,
     announcement,
+    choiceReveal,
   } = useSocket();
   const [confirmedCardId, setConfirmedCardId] = useState<string | null>(null);
   // Carte affichée en grand : soit en lecture seule (peek sur une carte posée,
@@ -48,6 +50,17 @@ export function GameBoard() {
     secondaryLabel?: string;
   } | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
+  // "Quatre à la suite" (GIVE_CARDS_TO_TARGET) : contrairement aux autres
+  // cartes ciblées, choisir la cible ne suffit pas à jouer la carte — il faut
+  // encore choisir QUELLES cartes de sa main lui donner (demande explicite de
+  // l'utilisateur, auparavant choisies arbitrairement). Étape intermédiaire
+  // entre la sélection de cible et l'envoi réel de PLAY_CARD.
+  const [giveCardsPicker, setGiveCardsPicker] = useState<{
+    card: CardType;
+    targetPlayerId: string;
+    count: number;
+    selectedIds: string[];
+  } | null>(null);
   // "Pingouins" (STEAL_ON_TURN_START) : rien ne signalait qu'on avait ce
   // pouvoir en début de tour, retour explicite de l'utilisateur — on
   // propose maintenant la question ("voulez-vous voler ?"), avec possibilité
@@ -147,14 +160,37 @@ export function GameBoard() {
   ]);
   const cardNeedsTarget = (card: CardType) => card.effects.some((e) => TARGET_REQUIRING_EFFECTS.has(e.type));
 
-  const submitPlayCard = (card: CardType, targetPlayerId?: string, claimWin?: boolean) => {
+  const submitPlayCard = (
+    card: CardType,
+    targetPlayerId?: string,
+    claimWin?: boolean,
+    givenCardIds?: string[],
+  ) => {
     if (!self) return;
     const canBePlayedAsInterrupt = card.effects.some((e) => e.type === "CANCEL_LAST_PLAYED_CARD");
     // Double usage : sur son propre tour -> mode normal (pioche 3) ; sinon
     // -> interruption (annule la dernière carte jouée) — voir isCardDisabled.
     const playedAsInterrupt = canBePlayedAsInterrupt ? !(isMyTurn && !self.isEliminated) : undefined;
-    playCard(roomId, self.id, card.id, targetPlayerId, playedAsInterrupt, claimWin);
+    playCard(roomId, self.id, card.id, targetPlayerId, playedAsInterrupt, claimWin, givenCardIds);
     setSelectedCard(null);
+  };
+
+  const toggleGiveCardSelection = (cardId: string) => {
+    setGiveCardsPicker((prev) => {
+      if (!prev) return prev;
+      const isSelected = prev.selectedIds.includes(cardId);
+      if (isSelected) {
+        return { ...prev, selectedIds: prev.selectedIds.filter((id) => id !== cardId) };
+      }
+      if (prev.selectedIds.length >= prev.count) return prev;
+      return { ...prev, selectedIds: [...prev.selectedIds, cardId] };
+    });
+  };
+
+  const confirmGiveCards = () => {
+    if (!giveCardsPicker) return;
+    submitPlayCard(giveCardsPicker.card, giveCardsPicker.targetPlayerId, undefined, giveCardsPicker.selectedIds);
+    setGiveCardsPicker(null);
   };
 
   // Après confirmation dans la modale d'aperçu : si la carte n'a besoin
@@ -247,6 +283,7 @@ export function GameBoard() {
   return (
     <div className="game-board">
       <PlayAnnouncementOverlay announcement={announcement} />
+      <ChoiceRevealOverlay reveal={choiceReveal} />
 
       {errorMessage && <p className="game-board__error">{errorMessage}</p>}
 
@@ -306,6 +343,45 @@ export function GameBoard() {
         </div>
       )}
 
+      {giveCardsPicker && self && (
+        <div className="steal-prompt">
+          <p>
+            Choisis {giveCardsPicker.count} carte{giveCardsPicker.count > 1 ? "s" : ""} de ta main à donner (
+            {giveCardsPicker.selectedIds.length}/{giveCardsPicker.count}).
+          </p>
+          <div className="give-cards-picker__hand">
+            {self.hand
+              .filter((c) => c.id !== giveCardsPicker.card.id)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={[
+                    "give-cards-picker__card",
+                    giveCardsPicker.selectedIds.includes(c.id) ? "give-cards-picker__card--selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => toggleGiveCardSelection(c.id)}
+                >
+                  {c.name}
+                </button>
+              ))}
+          </div>
+          <button
+            type="button"
+            className="btn-sticker"
+            disabled={giveCardsPicker.selectedIds.length !== giveCardsPicker.count}
+            onClick={confirmGiveCards}
+          >
+            Donner ces cartes
+          </button>
+          <button type="button" className="btn-sticker btn-sticker--zone" onClick={() => setGiveCardsPicker(null)}>
+            Annuler
+          </button>
+        </div>
+      )}
+
       <div className="table">
         <div className="table__surface">
           <TurnIndicator
@@ -317,7 +393,16 @@ export function GameBoard() {
             onSteal={(targetPlayerId, cardId) => self && stealPlayedCard(roomId, self.id, targetPlayerId, cardId)}
             onZoomCard={(card) => setCardModal({ card })}
             targetablePlayerIds={targetablePlayerIds}
-            onSelectTarget={(targetPlayerId) => selectedCard && submitPlayCard(selectedCard, targetPlayerId)}
+            onSelectTarget={(targetPlayerId) => {
+              if (!selectedCard) return;
+              const giveEffect = selectedCard.effects.find((e) => e.type === "GIVE_CARDS_TO_TARGET");
+              if (giveEffect && giveEffect.type === "GIVE_CARDS_TO_TARGET") {
+                setSelectedCard(null);
+                setGiveCardsPicker({ card: selectedCard, targetPlayerId, count: giveEffect.count, selectedIds: [] });
+                return;
+              }
+              submitPlayCard(selectedCard, targetPlayerId);
+            }}
           />
 
           {gameState.phase === "playing" && (
@@ -418,6 +503,7 @@ export function GameBoard() {
             .flatMap((p) => p.playedCards)
             .find((c) => c.id === gameState.pendingChoice!.cardId)}
           selfPlayerId={playerId}
+          players={gameState.players}
           onChoose={(value) => self && submitChoice(roomId, self.id, value)}
         />
       )}

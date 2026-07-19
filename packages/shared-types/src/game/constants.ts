@@ -28,3 +28,11 @@ export const NOSE_COUNTDOWN_TICK_MS = 2000;
  * vient de se passer. Une seule constante à ajuster pour équilibrer le rythme.
  */
 export const CARD_ANNOUNCEMENT_MS = 2200;
+
+/**
+ * Révélation "qui a voté/choisi quoi" (Bataille, Chiffre, Cadeaux...) : même
+ * principe que CARD_ANNOUNCEMENT_MS — affichée après résolution, avant
+ * d'appliquer le nouvel état, pour laisser le temps de voir le résultat
+ * (demande explicite de l'utilisateur, "voir qui a voté quoi").
+ */
+export const CHOICE_REVEAL_MS = 2800;

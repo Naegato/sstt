@@ -71,10 +71,18 @@ export class GameService {
 
   async startGame(roomId: RoomId): Promise<EngineResult> {
     const deck = await loadPlayableDeck();
+    // Règle officielle : "déterminer le premier joueur au hasard" — pas le premier
+    // qui a rejoint la room (ancien comportement). Aléatoire calculé ici, avant
+    // l'event, même principe que buildBalancedDeck (le moteur pur ne tire jamais
+    // au hasard lui-même).
+    const room = this.roomManager.getOrCreateRoom(roomId);
+    const players = room.state.players;
+    const startingPlayerId = players[Math.floor(Math.random() * players.length)]!.id;
     const result = this.handleEvent(roomId, {
       type: "GAME_STARTED",
       timestamp: Date.now(),
       deck: buildBalancedDeck(deck),
+      startingPlayerId,
     });
     return this.drawForCurrentPlayer(roomId, result);
   }
@@ -86,6 +94,7 @@ export class GameService {
     targetPlayerId?: PlayerId,
     playedAsInterrupt?: boolean,
     claimWin?: boolean,
+    givenCardIds?: CardId[],
   ): EngineResult {
     // "Politique" a besoin d'aléatoire (mélange des mains + de la pioche) : le
     // moteur pur ne mélange jamais lui-même, donc c'est calculé ici, avant de
@@ -120,6 +129,7 @@ export class GameService {
       shuffledDrawPileOrder,
       stolenCardId,
       claimWin,
+      givenCardIds,
       timestamp: Date.now(),
     });
 
