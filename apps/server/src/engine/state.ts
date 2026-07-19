@@ -640,11 +640,16 @@ export function declareWinners(state: GameState, winnerIds: PlayerId[]): EngineR
 }
 
 /** Ouvre "Bataille" : tous les joueurs en jeu choisissent en secret pierre/feuille/ciseaux. */
-export function startRockPaperScissors(state: GameState, cardId: CardId): GameState {
+export function startRockPaperScissors(
+  state: GameState,
+  cardId: CardId,
+  actorPlayerId: PlayerId,
+  losingShape: "pierre" | "feuille" | "ciseaux" | "differentFromActor",
+): GameState {
   const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
   return {
     ...state,
-    pendingChoice: { mode: "rockPaperScissors", cardId, eligiblePlayerIds, choices: {} },
+    pendingChoice: { mode: "rockPaperScissors", cardId, actorPlayerId, losingShape, eligiblePlayerIds, choices: {} },
   };
 }
 
@@ -695,7 +700,15 @@ export function submitChoice(state: GameState, playerId: PlayerId, value: string
       return { state: next, sideEffects };
     }
     next = { ...next, pendingChoice: null };
-    const losers = pendingChoice.eligiblePlayerIds.filter((id) => pendingChoice.choices[id] === "feuille");
+    const losingValue =
+      pendingChoice.losingShape === "differentFromActor" ? pendingChoice.choices[pendingChoice.actorPlayerId] : pendingChoice.losingShape;
+    // "differentFromActor" : perdent ceux qui n'ont PAS choisi la même forme que
+    // l'auteur — l'auteur lui-même ne peut jamais perdre via cette règle (il
+    // correspond toujours à son propre choix).
+    const losers =
+      pendingChoice.losingShape === "differentFromActor"
+        ? pendingChoice.eligiblePlayerIds.filter((id) => pendingChoice.choices[id] !== losingValue)
+        : pendingChoice.eligiblePlayerIds.filter((id) => pendingChoice.choices[id] === losingValue);
     if (losers.length > 0) {
       const result = eliminateSpecificPlayers(next, losers);
       return { state: result.state, sideEffects: [...sideEffects, ...result.sideEffects] };

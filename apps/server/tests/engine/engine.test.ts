@@ -2434,27 +2434,32 @@ describe("Moteur — rejouer une partie (GAME_RESET)", () => {
 });
 
 describe("Moteur — choix simultané à options multiples (Bataille)", () => {
-  function makeBatailleCard(id = "bataille-1") {
-    return makeCard({ id, name: "Bataille", effects: [{ type: "START_ROCK_PAPER_SCISSORS" }] });
+  function makeBatailleCard(
+    losingShape: "pierre" | "feuille" | "ciseaux" | "differentFromActor",
+    id = "bataille-1",
+  ) {
+    return makeCard({ id, name: "Bataille", effects: [{ type: "START_ROCK_PAPER_SCISSORS", losingShape }] });
   }
 
-  it("ouvre un choix pour tous les joueurs en jeu, y compris l'auteur", () => {
+  it("ouvre un choix pour tous les joueurs en jeu, y compris l'auteur, avec la forme perdante de la variante jouée", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
-    const bataille = makeBatailleCard();
+    const bataille = makeBatailleCard("feuille");
     state = startGame(state, [bataille, ...makeDeck(20)]);
 
     const result = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 });
     expect(result.state.pendingChoice).toEqual({
       mode: "rockPaperScissors",
       cardId: bataille.id,
+      actorPlayerId: "p1",
+      losingShape: "feuille",
       eligiblePlayerIds: ["p1", "p2", "p3"],
       choices: {},
     });
   });
 
-  it("élimine tous ceux qui ont choisi \"feuille\" une fois tout le monde a choisi", () => {
+  it("variante FEUILLE : élimine tous ceux qui ont choisi \"feuille\"", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
-    const bataille = makeBatailleCard();
+    const bataille = makeBatailleCard("feuille");
     state = startGame(state, [bataille, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
 
@@ -2468,9 +2473,50 @@ describe("Moteur — choix simultané à options multiples (Bataille)", () => {
     expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(false);
   });
 
-  it("personne éliminé si personne n'a choisi \"feuille\"", () => {
+  it("variante PIERRE : élimine celui qui a choisi \"pierre\", pas celui qui a choisi \"feuille\" (bug réel corrigé : les 4 variantes éliminaient toujours \"feuille\")", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
-    const bataille = makeBatailleCard();
+    const bataille = makeBatailleCard("pierre");
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "feuille", timestamp: 4 }).state;
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "ciseaux", timestamp: 5 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(false);
+  });
+
+  it("variante CISEAUX : élimine celui qui a choisi \"ciseaux\"", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const bataille = makeBatailleCard("ciseaux");
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "pierre", timestamp: 4 }).state;
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "ciseaux", timestamp: 5 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+  });
+
+  it("variante AUTRE SIGNE QUE LE VÔTRE : élimine ceux dont le choix diffère de celui de l'auteur, jamais l'auteur lui-même", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    const bataille = makeBatailleCard("differentFromActor");
+    state = startGame(state, [bataille, ...makeDeck(20)]);
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
+
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p1", value: "pierre", timestamp: 4 }).state;
+    state = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p2", value: "pierre", timestamp: 5 }).state;
+    const result = processEvent(state, { type: "CHOICE_SUBMITTED", playerId: "p3", value: "ciseaux", timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(false);
+    expect(result.state.players.find((p) => p.id === "p3")!.isEliminated).toBe(true);
+  });
+
+  it("personne éliminé si personne n'a choisi la forme perdante", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
+    const bataille = makeBatailleCard("feuille");
     state = startGame(state, [bataille, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
 
@@ -2483,7 +2529,7 @@ describe("Moteur — choix simultané à options multiples (Bataille)", () => {
 
   it("bloque la fin de tour tant que tous n'ont pas choisi", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
-    const bataille = makeBatailleCard();
+    const bataille = makeBatailleCard("feuille");
     state = startGame(state, [bataille, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
 
@@ -2492,7 +2538,7 @@ describe("Moteur — choix simultané à options multiples (Bataille)", () => {
 
   it("refuse un choix invalide", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"]]);
-    const bataille = makeBatailleCard();
+    const bataille = makeBatailleCard("feuille");
     state = startGame(state, [bataille, ...makeDeck(20)]);
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: bataille.id, timestamp: 3 }).state;
 

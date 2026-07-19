@@ -5,6 +5,7 @@ import { config } from "./config/env.js";
 import { registerSocket } from "./plugins/socket.js";
 import authRoutes from "./routes/auth.js";
 import cardsRoutes from "./routes/cards.js";
+import debugRoutes from "./routes/debug.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -19,7 +20,8 @@ export async function buildApp() {
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(cardsRoutes, { prefix: "/api" });
 
-  await registerSocket(app);
+  const { gameService, roomManager } = await registerSocket(app);
+  await app.register(debugRoutes, { prefix: "/api", gameService, roomManager });
 
   app.get("/health", async () => ({ status: "ok", timestamp: Date.now() }));
 

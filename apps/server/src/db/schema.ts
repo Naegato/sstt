@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -29,4 +29,32 @@ export const oauthAccounts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("oauth_provider_account_idx").on(table.provider, table.providerAccountId)],
+);
+
+/**
+ * Event log persistant (voir GameService.eventLog, jusqu'ici uniquement en
+ * mémoire — perdu à chaque redémarrage du serveur, ce qui a empêché de
+ * déboguer une vraie partie signalée en prod). `apiVersion` (le SHA du commit
+ * déployé, voir `config.API_VERSION`) est stocké sur chaque event pour ne
+ * jamais confondre le comportement observé avec une version différente du
+ * moteur — demande explicite de l'utilisateur ("pour pas se tromper").
+ * Écriture "fire-and-forget" côté GameService (voir game-service.ts) : ne
+ * bloque jamais une action de jeu si la DB est indisponible, ce n'est qu'un
+ * journal d'audit, pas une dépendance de la boucle de jeu elle-même.
+ */
+export const gameEvents = pgTable(
+  "game_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: text("room_id").notNull(),
+    /** Ordre au sein de la room (0, 1, 2...) — plus fiable qu'un tri par timestamp si deux events partagent la même milliseconde. */
+    sequence: integer("sequence").notNull(),
+    event: jsonb("event").notNull(),
+    apiVersion: text("api_version"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("game_events_room_sequence_idx").on(table.roomId, table.sequence),
+    index("game_events_room_id_idx").on(table.roomId),
+  ],
 );

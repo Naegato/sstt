@@ -208,8 +208,9 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
   ],
 
   // "À 3, tout le monde joue" : choix simultané secret, pas un vote oui/non —
-  // voir GameState.pendingChoice / submitChoice() dans state.ts.
-  Bataille: [{ type: "START_ROCK_PAPER_SCISSORS" }],
+  // voir GameState.pendingChoice / submitChoice() dans state.ts. "Bataille"
+  // existe en 4 variantes à forme perdante différente (voir resolveBatailleEffects
+  // plus bas, COMMENTAIRE_VARIANT_RESOLVERS) — pas de mapping fixe ici.
   Chiffre: [{ type: "START_FINGER_COUNT_CHALLENGE" }],
 
   // Décompte synchronisé (bouton "nez" en direct) + résolution automatique à
@@ -323,11 +324,35 @@ function resolveDuChocolatEffects(commentaire: string): Card["effects"] {
   return [];
 }
 
+/**
+ * "Bataille" existe en 4 variantes (même nom/texte de règle générique, forme
+ * perdante différente) — bug réel trouvé en jouant une vraie partie (retour
+ * utilisateur : une "Bataille" où pierre devait perdre a éliminé le joueur qui
+ * avait joué feuille) : les 4 variantes étaient toutes mappées sur le même
+ * effet, qui éliminait TOUJOURS "feuille" quelle que soit la variante piochée.
+ */
+function resolveBatailleEffects(commentaire: string): Card["effects"] {
+  if (commentaire.includes("FEUILLE")) {
+    return [{ type: "START_ROCK_PAPER_SCISSORS", losingShape: "feuille" }];
+  }
+  if (commentaire.includes("CISEAUX")) {
+    return [{ type: "START_ROCK_PAPER_SCISSORS", losingShape: "ciseaux" }];
+  }
+  if (commentaire.includes("PIERRE")) {
+    return [{ type: "START_ROCK_PAPER_SCISSORS", losingShape: "pierre" }];
+  }
+  if (commentaire.includes("AUTRE signe")) {
+    return [{ type: "START_ROCK_PAPER_SCISSORS", losingShape: "differentFromActor" }];
+  }
+  return [];
+}
+
 // Variantes détectées via la colonne "commentaire" du CSV (labels propres),
 // contrairement à "Cadeaux" détectée via row.description — voir toCard().
 const COMMENTAIRE_VARIANT_RESOLVERS: Record<string, (commentaire: string) => Card["effects"]> = {
   "Vous avez gagné !": resolveVousAvezGagneEffects,
   "Du chocolat !": resolveDuChocolatEffects,
+  Bataille: resolveBatailleEffects,
 };
 
 function toCard(row: CatalogRow): Card {

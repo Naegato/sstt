@@ -17,4 +17,21 @@ export const config = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI ?? "http://localhost:3001/api/auth/google/callback",
+
+  /**
+   * Protège l'accès aux données JOUEUR (non anonymisées) de /api/debug/* —
+   * sans le bon token, ces routes restent consultables mais avec les noms de
+   * joueurs remplacés par "Joueur 1"/"Joueur 2"/... (voir routes/debug.ts),
+   * pour pouvoir les rendre publiques plus tard (futur replay) sans exposer
+   * d'identité. Non défini en dev = toujours en clair (pratique en local).
+   */
+  DEBUG_TOKEN: process.env.DEBUG_TOKEN,
+
+  /**
+   * SHA du commit déployé (voir Dockerfile/CI, build-arg GIT_SHA passé par
+   * `.github/workflows/deploy.yml`) — stocké sur chaque event persisté en
+   * base (voir schema.ts, gameEvents.apiVersion) pour ne jamais confondre un
+   * comportement observé avec une version différente du moteur en debug.
+   */
+  API_VERSION: process.env.GIT_SHA ?? "dev",
 };

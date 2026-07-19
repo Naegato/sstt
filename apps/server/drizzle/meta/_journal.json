@@ -15,6 +15,13 @@
       "when": 1784389855934,
       "tag": "0001_sweet_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784466321968,
+      "tag": "0002_broken_blur",
+      "breakpoints": true
     }
   ]
 }

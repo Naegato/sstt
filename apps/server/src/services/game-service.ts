@@ -9,6 +9,7 @@ import {
 import { type EngineResult, processEvent } from "../engine/index.js";
 import { loadPlayableDeck } from "../content/cards-catalog.js";
 import { buildBalancedDeck, shuffleWith } from "../content/deck-builder.js";
+import { config } from "../config/env.js";
 import type { RoomManager } from "./room-manager.js";
 
 export class GameService {
@@ -19,10 +20,17 @@ export class GameService {
    * pas par un event socket entrant) pour que socket.ts diffuse le nouvel état
    * à la room — voir `scheduleNoseCountdownResolution`. Optionnel pour ne pas
    * casser les tests qui construisent un `GameService` sans plugin socket.
+   *
+   * `persistEvent` (voir db/game-events-repository.ts) : optionnel pour la
+   * même raison — les tests qui construisent un `GameService` directement
+   * n'ont pas de vraie Postgres à disposition, donc ne le passent jamais, et
+   * `handleEvent` reste 100% synchrone/sans I/O dans ce cas (comportement
+   * historique préservé). `plugins/socket.ts` le branche en production.
    */
   constructor(
     private roomManager: RoomManager,
     private onSpontaneousUpdate?: (roomId: RoomId, result: EngineResult) => void,
+    private persistEvent?: (roomId: RoomId, sequence: number, event: GameEvent, apiVersion: string) => Promise<void>,
   ) {}
 
   handleEvent(roomId: RoomId, event: GameEvent): EngineResult {
@@ -31,8 +39,16 @@ export class GameService {
     this.roomManager.updateState(roomId, result.state);
 
     const log = this.eventLog.get(roomId) ?? [];
+    const sequence = log.length;
     log.push(event);
     this.eventLog.set(roomId, log);
+
+    // Fire-and-forget : jamais awaited, ne doit jamais bloquer/casser une
+    // action de jeu si la DB est indisponible — c'est un journal d'audit pour
+    // le debug, pas une dépendance de la boucle de jeu (voir CLAUDE.md).
+    this.persistEvent?.(roomId, sequence, event, config.API_VERSION).catch((err) => {
+      console.error(`[game-events] échec de la persistance pour la room ${roomId}`, err);
+    });
 
     return result;
   }
@@ -263,5 +279,10 @@ export class GameService {
 
   getEventLog(roomId: RoomId): GameEvent[] {
     return this.eventLog.get(roomId) ?? [];
+  }
+
+  /** Toutes les rooms ayant au moins un event enregistré depuis le dernier démarrage du serveur (voir /api/debug/rooms). */
+  listRoomIds(): RoomId[] {
+    return [...this.eventLog.keys()];
   }
 }

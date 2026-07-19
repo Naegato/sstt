@@ -216,11 +216,16 @@ export type AutomatedEffect =
    * (Bataille) Ouvre un choix simultané secret pierre/feuille/ciseaux pour
    * tous les joueurs en jeu (y compris l'auteur de la carte — le texte dit
    * "tout le monde joue", sans exception). Résolu par `submitChoice()` une
-   * fois que tous ont choisi : les joueurs ayant choisi "feuille" sont
-   * éliminés (règle de la carte, pas une vraie pierre-feuille-ciseaux à
-   * interaction — juste une valeur fixe perdante). Voir `GameState.pendingChoice`.
+   * fois que tous ont choisi : les joueurs ayant choisi `losingShape` sont
+   * éliminés — PAS une vraie pierre-feuille-ciseaux à interactions, juste une
+   * forme perdante fixée par la carte. 4 variantes existent (voir CSV,
+   * détectées via la colonne `commentaire`) avec une forme perdante
+   * différente : "pierre", "feuille", "ciseaux", ou `"differentFromActor"`
+   * (4e variante : "les joueurs qui ont joué un autre signe que le VÔTRE" —
+   * relative au choix de l'auteur de la carte, pas une forme fixe). Voir
+   * `GameState.pendingChoice`.
    */
-  | { type: "START_ROCK_PAPER_SCISSORS" }
+  | { type: "START_ROCK_PAPER_SCISSORS"; losingShape: "pierre" | "feuille" | "ciseaux" | "differentFromActor" }
   /**
    * (Chiffre) Ouvre un choix simultané secret (1 à 5 doigts) pour tous les
    * joueurs en jeu. Une fois tous les choix faits, si la somme totale est un
@@ -417,9 +422,12 @@ export type PendingHandSlap = {
  */
 export type PendingChoice =
   | {
-      /** "Bataille" : tous les joueurs en jeu choisissent, ceux qui ont choisi "feuille" sont éliminés. */
+      /** "Bataille" : tous les joueurs en jeu choisissent, ceux qui ont choisi `losingShape` sont éliminés (4 variantes, voir START_ROCK_PAPER_SCISSORS). */
       mode: "rockPaperScissors";
       cardId: CardId;
+      /** Auteur de la carte — nécessaire pour résoudre la variante "differentFromActor" (relative à son propre choix). */
+      actorPlayerId: PlayerId;
+      losingShape: "pierre" | "feuille" | "ciseaux" | "differentFromActor";
       eligiblePlayerIds: PlayerId[];
       choices: Partial<Record<PlayerId, "pierre" | "feuille" | "ciseaux">>;
     }

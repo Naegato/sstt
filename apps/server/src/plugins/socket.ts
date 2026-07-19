@@ -4,6 +4,7 @@ import { CLIENT_EVENTS, SERVER_EVENTS, type VoteChoice } from "@card-game/shared
 import { GameLogicError, type EngineResult } from "../engine/index.js";
 import { GameService } from "../services/game-service.js";
 import { RoomManager } from "../services/room-manager.js";
+import { insertGameEvent } from "../db/game-events-repository.js";
 
 type JoinRoomPayload = { roomId: string; playerId: string; playerName: string };
 type StartGamePayload = { roomId: string };
@@ -26,7 +27,7 @@ type SubmitChoicePayload = { roomId: string; playerId: string; value: string };
 type ToggleNoseTouchPayload = { roomId: string; playerId: string; touching: boolean };
 type SlapHandPayload = { roomId: string; playerId: string };
 
-export async function registerSocket(fastify: FastifyInstance): Promise<void> {
+export async function registerSocket(fastify: FastifyInstance): Promise<{ gameService: GameService; roomManager: RoomManager }> {
   const io = new SocketIOServer(fastify.server, {
     cors: { origin: "*" },
   });
@@ -41,7 +42,7 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
   const roomManager = new RoomManager();
   // Le minuteur de "Nez à nez"/"Pied de nez" (voir GameService.scheduleNoseCountdownResolution)
   // résout puis diffuse spontanément, sans event socket entrant — réutilise broadcastResult.
-  const gameService = new GameService(roomManager, broadcastResult);
+  const gameService = new GameService(roomManager, broadcastResult, insertGameEvent);
 
   io.on("connection", (socket) => {
     socket.on(CLIENT_EVENTS.JOIN_ROOM, ({ roomId, playerId, playerName }: JoinRoomPayload) => {
@@ -192,6 +193,8 @@ export async function registerSocket(fastify: FastifyInstance): Promise<void> {
   });
 
   fastify.decorate("io", io);
+
+  return { gameService, roomManager };
 }
 
 function emitError(socket: { emit: (event: string, payload: unknown) => void }, err: unknown): void {

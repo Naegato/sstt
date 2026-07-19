@@ -374,7 +374,7 @@ function applyOneEffect(
     }
 
     case "START_ROCK_PAPER_SCISSORS": {
-      const next = startRockPaperScissors(state, card.id);
+      const next = startRockPaperScissors(state, card.id, playerId, effect.losingShape);
       return { state: next, sideEffects: [{ type: "CHOICE_STARTED", cardId: card.id }] };
     }
 

@@ -257,10 +257,12 @@ describe("loadPlayableDeck", () => {
     ]);
   });
 
-  it("branche START_ROCK_PAPER_SCISSORS sur \"Bataille\"", async () => {
+  it("branche START_ROCK_PAPER_SCISSORS sur les 4 variantes de \"Bataille\", chacune avec sa propre forme perdante", async () => {
     const deck = await loadPlayableDeck();
-    const card = deck.find((c) => c.name === "Bataille");
-    expect(card?.effects).toEqual([{ type: "START_ROCK_PAPER_SCISSORS" }]);
+    const cards = deck.filter((c) => c.name === "Bataille");
+    expect(cards).toHaveLength(4);
+    const losingShapes = cards.map((c) => (c.effects[0] as { losingShape: string }).losingShape).sort();
+    expect(losingShapes).toEqual(["ciseaux", "differentFromActor", "feuille", "pierre"]);
   });
 
   it("branche START_FINGER_COUNT_CHALLENGE sur \"Chiffre\"", async () => {

@@ -23,6 +23,11 @@ COPY --from=build /repo/apps/server/package.json ./apps/server/package.json
 # visuels des cartes (assets/cards/*.jpg) ne sont jamais servis par le serveur.
 COPY --from=build /repo/assets/cards/cards.csv ./assets/cards/cards.csv
 ENV ASSETS_DIR=/repo/assets
+# Stampé sur chaque event persisté en base (voir config.API_VERSION,
+# db/game-events-repository.ts) pour ne jamais confondre un bug observé avec
+# une version différente du moteur — passé par --build-arg GIT_SHA=${{ github.sha }}.
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
 WORKDIR /repo/apps/server
 EXPOSE 3001
 CMD ["bun", "run", "dist/index.js"]

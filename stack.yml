@@ -26,12 +26,14 @@ services:
         export JWT_SECRET="$$(cat /run/secrets/jwt_secret)";
         export DISCORD_CLIENT_SECRET="$$(cat /run/secrets/discord_client_secret)";
         export GOOGLE_CLIENT_SECRET="$$(cat /run/secrets/google_client_secret)";
+        export DEBUG_TOKEN="$$(cat /run/secrets/debug_token)";
         exec bun run dist/index.js
     secrets:
       - db_password
       - jwt_secret
       - discord_client_secret
       - google_client_secret
+      - debug_token
     deploy:
       replicas: 1
       restart_policy:
@@ -78,6 +80,8 @@ secrets:
   discord_client_secret:
     external: true
   google_client_secret:
+    external: true
+  debug_token:
     external: true
 
 volumes:
