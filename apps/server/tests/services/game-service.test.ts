@@ -111,10 +111,12 @@ describe("GameService", () => {
       // l'assertion hand.length === 3 ci-dessous (trouvé par du fuzzing manuel) :
       // "Illumination ludique" ciblant p2 le force à jouer une carte au hasard dès
       // sa prochaine pioche (juste après, dans ce test) ; "Politique" mélange et
-      // redistribue toutes les mains ; "Ninjas" vole puis force la carte volée.
+      // redistribue toutes les mains ; "Ninjas" vole puis force la carte volée ;
+      // "À moi ! À qui ?..." échange carrément les deux mains.
       "FORCE_RANDOM_CARD_EACH_TURN",
       "RESHUFFLE_ALL_HANDS_AND_REDRAW",
       "STEAL_RANDOM_CARD_AND_FORCE_PLAY",
+      "SWAP_POSITION_AND_HAND",
     ]);
     const cardToPlay = p1.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)));
     if (!cardToPlay) return; // hand entièrement composée de cartes bloquantes, cas trop rare pour être testé ici

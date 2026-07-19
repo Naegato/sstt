@@ -970,7 +970,13 @@ button {
   padding: 2rem;
   background: rgba(10, 7, 15, 0.82);
   backdrop-filter: blur(3px);
-  pointer-events: none;
+  /* Bloque volontairement les clics sur le plateau en dessous : le nouvel
+     état (main/tour à jour) n'est appliqué qu'APRÈS l'annonce (voir
+     useSocket.ts), donc la main affichée pendant ce délai est encore
+     l'ancienne — sans ce blocage, un clic pendant l'annonce peut déclencher
+     un second coup avant que le client n'ait rattrapé le vrai état serveur
+     (bug réel rapporté : Ninjas + carte volée donnait l'impression de
+     "regagner un tour"). */
 }
 
 .play-announcement__holder {

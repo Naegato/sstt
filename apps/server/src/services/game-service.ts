@@ -14,6 +14,15 @@ import type { RoomManager } from "./room-manager.js";
 
 export class GameService {
   private eventLog = new Map<RoomId, GameEvent[]>();
+  /**
+   * Chaîne les écritures DB d'une même room, une par une (voir `handleEvent`)
+   * — `insertGameEvent` recalcule `sequence` depuis la vraie base à chaque
+   * appel (voir db/game-events-repository.ts pour le pourquoi), donc deux
+   * écritures concurrentes pour la même room sans cette sérialisation
+   * pourraient lire le même MAX(sequence) et produire un doublon. Ne bloque
+   * jamais `handleEvent` lui-même (toujours fire-and-forget côté appelant).
+   */
+  private persistQueues = new Map<RoomId, Promise<void>>();
 
   /**
    * Appelé après chaque résolution "spontanée" (déclenchée par un minuteur,
@@ -30,7 +39,7 @@ export class GameService {
   constructor(
     private roomManager: RoomManager,
     private onSpontaneousUpdate?: (roomId: RoomId, result: EngineResult) => void,
-    private persistEvent?: (roomId: RoomId, sequence: number, event: GameEvent, apiVersion: string) => Promise<void>,
+    private persistEvent?: (roomId: RoomId, event: GameEvent, apiVersion: string) => Promise<void>,
   ) {}
 
   handleEvent(roomId: RoomId, event: GameEvent): EngineResult {
@@ -39,16 +48,23 @@ export class GameService {
     this.roomManager.updateState(roomId, result.state);
 
     const log = this.eventLog.get(roomId) ?? [];
-    const sequence = log.length;
     log.push(event);
     this.eventLog.set(roomId, log);
 
-    // Fire-and-forget : jamais awaited, ne doit jamais bloquer/casser une
-    // action de jeu si la DB est indisponible — c'est un journal d'audit pour
-    // le debug, pas une dépendance de la boucle de jeu (voir CLAUDE.md).
-    this.persistEvent?.(roomId, sequence, event, config.API_VERSION).catch((err) => {
-      console.error(`[game-events] échec de la persistance pour la room ${roomId}`, err);
-    });
+    // Fire-and-forget côté appelant (jamais awaited ici, ne bloque/casse
+    // jamais une action de jeu si la DB est indisponible — c'est un journal
+    // d'audit pour le debug, pas une dépendance de la boucle de jeu), mais
+    // sérialisé par room pour garder un `sequence` correct (voir persistQueues).
+    if (this.persistEvent) {
+      const previous = this.persistQueues.get(roomId) ?? Promise.resolve();
+      const next = previous.catch(() => {}).then(() => this.persistEvent!(roomId, event, config.API_VERSION));
+      this.persistQueues.set(
+        roomId,
+        next.catch((err) => {
+          console.error(`[game-events] échec de la persistance pour la room ${roomId}`, err);
+        }),
+      );
+    }
 
     return result;
   }

@@ -60,12 +60,22 @@ describe("Room + WebSocket — flux complet rejoindre → démarrer → jouer", 
     const otherSocket = currentPlayerId === "alice" ? bob : alice;
     const otherPlayerId = currentPlayerId === "alice" ? "bob" : "alice";
 
-    // Le vrai catalogue peut distribuer une carte qui exige un joueur cible (Dragon,
-    // Réforme des retraites...) ou une carte réactive injouable ici (Vie
-    // supplémentaire, Gros nul !...) : sans ça le serveur renvoie une erreur au seul
-    // socket émetteur, sans broadcast GAME_STATE_UPDATE -> `otherSeesPlay` timeout.
-    const blockingEffects = new Set(["REACT_TO_OWN_ELIMINATION", "REACT_TO_GROUP_ELIMINATION"]);
-    const cardToPlay = currentPlayer.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)))!;
+    // Le vrai catalogue peut distribuer une carte réactive injouable ici (Vie
+    // supplémentaire, Gros nul !, Enfoiré !...) : sans ça le serveur renvoie une
+    // erreur au seul socket émetteur, sans broadcast GAME_STATE_UPDATE ->
+    // `otherSeesPlay` timeout. Liste alignée sur tests/services/game-service.test.ts
+    // (même classe de flakiness déjà rencontrée et corrigée là-bas).
+    const blockingEffects = new Set([
+      "REACT_TO_OWN_ELIMINATION",
+      "REACT_TO_GROUP_ELIMINATION",
+      "REACT_TO_OTHER_PLAYER_VICTORY",
+    ]);
+    const cardToPlay = currentPlayer.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)));
+    if (!cardToPlay) {
+      alice.disconnect();
+      bob.disconnect();
+      return; // main entièrement composée de cartes réactives, cas trop rare pour être testé ici
+    }
 
     const otherSeesPlay = waitForStateUpdate(otherSocket);
     currentSocket.emit(CLIENT_EVENTS.PLAY_CARD, {
