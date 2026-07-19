@@ -656,6 +656,55 @@ describe("Moteur — GIVE_CARDS_TO_TARGET (Quatre à la suite)", () => {
   });
 });
 
+describe("Moteur — SWAP_POSITION_AND_HAND (À moi ! À qui ? À moi ! À vous ?)", () => {
+  it("échange la main et la position dans l'ordre des tours, garde les playedCards inchangés, rejoue", () => {
+    let state = createInitialState("room-1");
+    for (const [id, name] of [["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]] as const) {
+      state = processEvent(state, { type: "PLAYER_JOINED", playerId: id, playerName: name, timestamp: 1 }).state;
+    }
+    const swap = makeCard({
+      id: "swap-1",
+      effects: [{ type: "SWAP_POSITION_AND_HAND" }, { type: "PLAY_AGAIN" }],
+    });
+    state = processEvent(state, { type: "GAME_STARTED", timestamp: 2, deck: [swap, ...makeDeck(20)] }).state;
+
+    // La carte swap elle-même quitte la main de p1 AVANT que l'échange ne s'applique
+    // (removeFromHand, en tête de playCard()) — exclue ici pour comparer les mains
+    // telles qu'elles sont réellement au moment de l'échange.
+    const p1HandBefore = state.players.find((p) => p.id === "p1")!.hand.map((c) => c.id).filter((id) => id !== swap.id);
+    const p3HandBefore = state.players.find((p) => p.id === "p3")!.hand.map((c) => c.id);
+    // Donne à p1 une carte posée pour vérifier qu'elle reste attachée à p1, pas à sa nouvelle position.
+    const bombeSurP1 = makeCard({ id: "bombe-p1", name: "Bombe" });
+    state = updatePlayer(state, "p1", (p) => ({ ...p, playedCards: [...p.playedCards, bombeSurP1] }));
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: swap.id,
+      targetPlayerId: "p3",
+      timestamp: 3,
+    });
+
+    const orderedIds = result.state.players.map((p) => p.id);
+    // p1 et p3 ont échangé de position dans le tableau (ordre des tours) ; p2 reste au milieu.
+    expect(orderedIds).toEqual(["p3", "p2", "p1"]);
+
+    const p1After = result.state.players.find((p) => p.id === "p1")!;
+    const p3After = result.state.players.find((p) => p.id === "p3")!;
+    expect(p1After.hand.map((c) => c.id)).toEqual(p3HandBefore);
+    expect(p3After.hand.map((c) => c.id)).toEqual(p1HandBefore);
+    // playedCards restent attachés à l'identité, pas à la position — la carte
+    // "swap" elle-même se pose devant p1 (placement par défaut : devant l'auteur).
+    expect(p1After.playedCards.map((c) => c.id)).toEqual(["bombe-p1", "swap-1"]);
+    expect(p3After.playedCards).toEqual([]);
+
+    // "Rejouez immédiatement" : toujours le tour de p1, pas avancé.
+    expect(result.state.currentPlayerId).toBe("p1");
+    expect(result.state.hasPlayedThisTurn).toBe(false);
+    expect(result.sideEffects).toContainEqual({ type: "POSITION_AND_HAND_SWAPPED", playerId: "p1", targetPlayerId: "p3" });
+  });
+});
+
 describe("Moteur — Tricheur (DRAW_CARDS + PLAY_AGAIN combinés)", () => {
   it("pioche 2 cartes et accorde un autre tour", () => {
     let state = createInitialState("room-1");

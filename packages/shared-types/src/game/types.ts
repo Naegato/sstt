@@ -275,7 +275,18 @@ export type AutomatedEffect =
         | { kind: "noStarCardInAnyHand" }
         | { kind: "socialVote"; description: string };
       fallbackPoints: number;
-    };
+    }
+  /**
+   * (À moi ! À qui ? À moi ! À vous ?) Échange de place (position dans l'ordre
+   * des tours) ET de main avec le joueur ciblé — combiné à `PLAY_AGAIN` sur la
+   * même carte pour "rejouez immédiatement depuis votre nouvelle place". Les
+   * piles de cartes posées (`playedCards`) restent attachées à chaque joueur,
+   * PAS à la position : le texte dit explicitement "laissez les cartes face
+   * visible là où elles sont", et rien dans le moteur ne référence de pile par
+   * position plutôt que par identité — portée volontairement limitée à
+   * l'échange de place + main, cohérent avec cette clarification du texte.
+   */
+  | { type: "SWAP_POSITION_AND_HAND" };
 
 export type Card = {
   id: CardId;

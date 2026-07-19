@@ -10,6 +10,7 @@ import { DenunciationPanel } from "./DenunciationPanel";
 import { DiscardPileModal } from "./DiscardPileModal";
 import { HandSlapPanel } from "./HandSlapPanel";
 import { NoseCountdownPanel } from "./NoseCountdownPanel";
+import { PlayAnnouncementOverlay } from "./PlayAnnouncementOverlay";
 import { PlayerHand } from "./PlayerHand";
 import { TurnIndicator } from "./TurnIndicator";
 import { VotePanel } from "./VotePanel";
@@ -32,6 +33,7 @@ export function GameBoard() {
     submitChoice,
     toggleNoseTouch,
     slapHand,
+    announcement,
   } = useSocket();
   const [confirmedCardId, setConfirmedCardId] = useState<string | null>(null);
   // Carte affichée en grand : soit en lecture seule (peek sur une carte posée,
@@ -141,6 +143,7 @@ export function GameBoard() {
     "ELIMINATE_TARGET",
     "STEAL_RANDOM_CARD_AND_FORCE_PLAY",
     "REACT_TO_GROUP_ELIMINATION",
+    "SWAP_POSITION_AND_HAND",
   ]);
   const cardNeedsTarget = (card: CardType) => card.effects.some((e) => TARGET_REQUIRING_EFFECTS.has(e.type));
 
@@ -243,6 +246,8 @@ export function GameBoard() {
 
   return (
     <div className="game-board">
+      <PlayAnnouncementOverlay announcement={announcement} />
+
       {errorMessage && <p className="game-board__error">{errorMessage}</p>}
 
       <h1>Room {roomId}</h1>

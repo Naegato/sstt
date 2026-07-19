@@ -12,6 +12,7 @@ export type SideEffect =
   | { type: "VOTE_CAST"; playerId: PlayerId }
   | { type: "CARD_LOST_TO_DISCARD"; playerId: PlayerId }
   | { type: "CARDS_GIVEN"; playerId: PlayerId; count: number }
+  | { type: "POSITION_AND_HAND_SWAPPED"; playerId: PlayerId; targetPlayerId: PlayerId }
   | { type: "ELIMINATION_REVERSED"; playerId: PlayerId }
   | { type: "PLAYED_CARD_CANCELLED"; playerId: PlayerId; cardId: CardId }
   | { type: "PLAYED_CARD_STOLEN"; playerId: PlayerId; targetPlayerId: PlayerId; cardId: CardId }

@@ -18,3 +18,13 @@ export const WINNING_POINTS = 15;
  */
 export const NOSE_COUNTDOWN_WARNING_MS = 3000;
 export const NOSE_COUNTDOWN_TICK_MS = 2000;
+
+/**
+ * Annonce d'une carte jouée : le client retarde l'application du nouvel état
+ * reçu (`game:state-update`) le temps d'afficher la carte en grand (face
+ * visible avec nom/texte, ou dos de carte si elle se pose face cachée) avant
+ * de révéler l'effet — sinon des cartes comme "Câlin de groupe" (victoire
+ * immédiate) passent trop vite pour que les joueurs comprennent ce qu'il
+ * vient de se passer. Une seule constante à ajuster pour équilibrer le rythme.
+ */
+export const CARD_ANNOUNCEMENT_MS = 2200;

@@ -222,6 +222,11 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
   // NOSE_COUNTDOWN_WARNING_MS/NOSE_COUNTDOWN_TICK_MS (shared-types/constants.ts).
   "Nez à nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }],
   "Pied de nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }],
+
+  // "Choisissez un autre joueur et échangez de place avec lui [...] Vous récupérez
+  // sa main, et lui la vôtre. Rejouez immédiatement depuis votre nouvelle place."
+  // Les cartes posées ("là où elles sont") ne bougent pas — voir SWAP_POSITION_AND_HAND.
+  "À moi ! À qui ? À moi ! À vous ?": [{ type: "SWAP_POSITION_AND_HAND" }, { type: "PLAY_AGAIN" }],
 };
 
 /**

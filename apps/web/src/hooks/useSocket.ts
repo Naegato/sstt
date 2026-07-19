@@ -1,20 +1,49 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { CLIENT_EVENTS, SERVER_EVENTS, type GameState, type VoteChoice } from "@card-game/shared-types";
+import { useEffect, useRef, useState } from "react";
+import {
+  CARD_ANNOUNCEMENT_MS,
+  CLIENT_EVENTS,
+  SERVER_EVENTS,
+  type GameState,
+  type VoteChoice,
+} from "@card-game/shared-types";
 import { getSocket } from "@/lib/socket";
 import { useGameStore } from "@/stores/gameStore";
+import { extractPlayAnnouncements, type AnySideEffect, type PlayAnnouncement } from "@/lib/playAnnouncements";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function useSocket() {
   const socketRef = useRef(getSocket());
   const updateGameState = useGameStore((s) => s.updateGameState);
   const setError = useGameStore((s) => s.setError);
+  // Carte(s) en cours d'annonce (voir extractPlayAnnouncements) : le nouvel
+  // état reçu n'est appliqué au store qu'APRÈS les avoir montrées une à une,
+  // pour laisser le temps de comprendre ce qui vient d'être joué avant que
+  // l'effet (points, élimination, victoire...) ne devienne visible — demande
+  // explicite de l'utilisateur ("le jeu va trop vite"). Les mises à jour
+  // s'enchaînent via une queue de promesses pour ne jamais en sauter une.
+  const [announcement, setAnnouncement] = useState<PlayAnnouncement | null>(null);
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     const socket = socketRef.current;
     socket.connect();
 
-    const onStateUpdate = (payload: { state: GameState }) => updateGameState(payload.state);
+    const onStateUpdate = (payload: { state: GameState; sideEffects?: AnySideEffect[] }) => {
+      const announcements = extractPlayAnnouncements(payload.state, payload.sideEffects);
+      queueRef.current = queueRef.current.then(async () => {
+        for (const next of announcements) {
+          setAnnouncement(next);
+          await sleep(CARD_ANNOUNCEMENT_MS);
+        }
+        setAnnouncement(null);
+        updateGameState(payload.state);
+      });
+    };
     const onError = (payload: { message: string }) => setError(payload.message);
     // Socket.IO reconnecte automatiquement la connexion sous-jacente après une
     // coupure (réseau, redémarrage du serveur...), mais "rejoindre" une room
@@ -119,5 +148,6 @@ export function useSocket() {
     submitChoice,
     toggleNoseTouch,
     slapHand,
+    announcement,
   };
 }

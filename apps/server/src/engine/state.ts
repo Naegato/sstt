@@ -494,6 +494,31 @@ export function moveFirstHandCardToPlayer(state: GameState, fromPlayerId: Player
 }
 
 /**
+ * "À moi ! À qui ? À moi ! À vous ?" : échange la position dans l'ordre des
+ * tours ET la main entre `playerId` et `targetPlayerId` — `playedCards` de
+ * chacun reste inchangé (voir `SWAP_POSITION_AND_HAND` dans shared-types pour
+ * le détail de cette limite assumée). Sans effet si l'un des deux joueurs est
+ * introuvable.
+ */
+export function swapPositionAndHand(state: GameState, playerId: PlayerId, targetPlayerId: PlayerId): GameState {
+  const idxA = state.players.findIndex((p) => p.id === playerId);
+  const idxB = state.players.findIndex((p) => p.id === targetPlayerId);
+  if (idxA === -1 || idxB === -1) {
+    return state;
+  }
+  const handA = state.players[idxA]!.hand;
+  const handB = state.players[idxB]!.hand;
+  let next = updatePlayer(state, playerId, (p) => ({ ...p, hand: handB }));
+  next = updatePlayer(next, targetPlayerId, (p) => ({ ...p, hand: handA }));
+
+  // updatePlayer() ne change jamais l'ordre du tableau (juste le contenu par id),
+  // donc idxA/idxB restent valides pour échanger les deux positions elles-mêmes.
+  const players = [...next.players];
+  [players[idxA], players[idxB]] = [players[idxB]!, players[idxA]!];
+  return { ...next, players };
+}
+
+/**
  * Ouvre un vote simultané oui/non pour tous les joueurs actuellement en jeu.
  * Bloque la fin de tour tant qu'il n'est pas résolu (voir index.ts / TURN_ENDED).
  */

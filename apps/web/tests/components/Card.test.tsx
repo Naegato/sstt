@@ -19,9 +19,20 @@ describe("Card component", () => {
     expect(screen.getByText(/rejouez un tour/)).toBeDefined();
   });
 
-  it("n'appelle pas onPlay quand disabled est true", () => {
+  it("appelle quand même onPlay quand disabled est true (visuel seulement, pas un vrai <button disabled>)", () => {
+    // `disabled` ne bloque plus nativement le clic : sinon impossible de zoomer
+    // pour lire une carte de sa main hors de son tour (GameBoard.handleCardClick
+    // décide, selon isCardDisabled, d'ouvrir un zoom en lecture seule ou le flux
+    // de confirmation normal — voir CLAUDE.md, retour utilisateur sur ce point).
     const onPlay = vi.fn();
     render(<Card card={mockCard} disabled onPlay={onPlay} />);
+    screen.getByRole("button").click();
+    expect(onPlay).toHaveBeenCalledWith(mockCard);
+  });
+
+  it("n'appelle pas onPlay quand onPlay n'est pas fourni (carte en lecture seule pure)", () => {
+    const onPlay = vi.fn();
+    render(<Card card={mockCard} disabled />);
     screen.getByRole("button").click();
     expect(onPlay).not.toHaveBeenCalled();
   });

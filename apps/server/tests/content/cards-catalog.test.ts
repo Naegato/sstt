@@ -285,6 +285,12 @@ describe("loadPlayableDeck", () => {
     expect(modes).toEqual(["firstLoses", "lastLoses", "onlyFirstSurvives"]);
   });
 
+  it("branche SWAP_POSITION_AND_HAND + PLAY_AGAIN sur \"À moi ! À qui ? À moi ! À vous ?\"", async () => {
+    const deck = await loadPlayableDeck();
+    const card = deck.find((c) => c.name === "À moi ! À qui ? À moi ! À vous ?");
+    expect(card?.effects).toEqual([{ type: "SWAP_POSITION_AND_HAND" }, { type: "PLAY_AGAIN" }]);
+  });
+
   it("branche WIN_IF_CONDITION_ELSE_POINTS sur les 6 variantes de \"Vous avez gagné !\"", async () => {
     const deck = await loadPlayableDeck();
     const gagne = deck.filter((c) => c.name === "Vous avez gagné !");

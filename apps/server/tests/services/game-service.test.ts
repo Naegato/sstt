@@ -105,6 +105,16 @@ describe("GameService", () => {
       "GIVE_CARDS_TO_TARGET",
       "LOCK_DRAW_PILE",
       "START_NOSE_COUNTDOWN", // ouvre pendingNoseCountdown, bloque endTurn (NOSE_COUNTDOWN_PENDING) comme les votes/choix ci-dessus
+      "START_HAND_SLAP", // ouvre pendingHandSlap ("Du chocolat !"), bloque endTurn (HAND_SLAP_PENDING) de la même façon
+      // Changent la main de p2 autrement que par la pioche automatique de fin de
+      // tour attendue par ce test — pas bloquants pour endTurn, mais fausseraient
+      // l'assertion hand.length === 3 ci-dessous (trouvé par du fuzzing manuel) :
+      // "Illumination ludique" ciblant p2 le force à jouer une carte au hasard dès
+      // sa prochaine pioche (juste après, dans ce test) ; "Politique" mélange et
+      // redistribue toutes les mains ; "Ninjas" vole puis force la carte volée.
+      "FORCE_RANDOM_CARD_EACH_TURN",
+      "RESHUFFLE_ALL_HANDS_AND_REDRAW",
+      "STEAL_RANDOM_CARD_AND_FORCE_PLAY",
     ]);
     const cardToPlay = p1.hand.find((c) => !c.effects.some((e) => blockingEffects.has(e.type)));
     if (!cardToPlay) return; // hand entièrement composée de cartes bloquantes, cas trop rare pour être testé ici

@@ -27,6 +27,7 @@ import {
   startRockPaperScissors,
   startSimultaneousVote,
   startWinClaimVote,
+  swapPositionAndHand,
   updatePlayer,
   winAllAlivePlayers,
 } from "./state.js";
@@ -306,6 +307,14 @@ function applyOneEffect(
 
     case "WIN_ALL_ALIVE_PLAYERS":
       return winAllAlivePlayers(state);
+
+    case "SWAP_POSITION_AND_HAND": {
+      if (!targetPlayerId) {
+        throw new GameLogicError("Cet effet nécessite un joueur cible", "MISSING_TARGET", { cardId: card.id });
+      }
+      const next = swapPositionAndHand(state, playerId, targetPlayerId);
+      return { state: next, sideEffects: [{ type: "POSITION_AND_HAND_SWAPPED", playerId, targetPlayerId }] };
+    }
 
     case "GIVE_CARDS_TO_TARGET": {
       if (!targetPlayerId) {
