@@ -1,7 +1,9 @@
-import type { PendingChoice, PlayerId } from "@card-game/shared-types";
+import type { Card as CardType, PendingChoice, PlayerId } from "@card-game/shared-types";
+import { getPublicCardPrompt } from "@/lib/cardText";
 
 type ChoicePanelProps = {
   pendingChoice: PendingChoice;
+  card: CardType | undefined;
   selfPlayerId: PlayerId | null;
   onChoose: (value: string) => void;
 };
@@ -27,20 +29,19 @@ const CHOICE_OPTIONS: Record<PendingChoice["mode"], { title: string; options: { 
     },
   };
 
-export function ChoicePanel({ pendingChoice, selfPlayerId, onChoose }: ChoicePanelProps) {
+export function ChoicePanel({ pendingChoice, card, selfPlayerId, onChoose }: ChoicePanelProps) {
   const hasChosen = selfPlayerId ? pendingChoice.choices[selfPlayerId] !== undefined : false;
   const chosenCount = Object.keys(pendingChoice.choices).length;
   const { title, options } = CHOICE_OPTIONS[pendingChoice.mode];
+  // La règle de résolution (qui gagne/perd) est la "dernière phrase" que la
+  // carte demande explicitement de ne pas lire à voix haute — seul le prompt
+  // public (entre guillemets sur la carte) doit apparaître ici, jamais la règle.
+  const publicPrompt = getPublicCardPrompt(card);
 
   return (
     <div className="vote-panel">
       <h2>{title}</h2>
-      {pendingChoice.mode === "rockPaperScissors" && (
-        <p>Choisissez en secret : les joueurs qui choisissent « Feuille » sont éliminés.</p>
-      )}
-      {pendingChoice.mode === "fingerCount" && (
-        <p>Montrez en secret un nombre de doigts (1 à 5) : si la somme totale est un nombre premier, ça gagne.</p>
-      )}
+      {publicPrompt && <p>« {publicPrompt} »</p>}
       <p>
         {chosenCount} / {pendingChoice.eligiblePlayerIds.length} joueurs ont choisi.
       </p>

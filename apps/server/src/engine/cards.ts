@@ -350,7 +350,7 @@ function applyOneEffect(
       return cancelLastPlayedCard(state, playerId);
 
     case "START_SIMULTANEOUS_VOTE": {
-      const next = startSimultaneousVote(state, card.id, effect.onYes, effect.onNo);
+      const next = startSimultaneousVote(state, card.id, playerId, effect.onYes, effect.onNo);
       return { state: next, sideEffects: [{ type: "VOTE_STARTED", cardId: card.id }] };
     }
 

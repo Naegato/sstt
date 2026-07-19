@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Card as CardType, PendingNoseCountdown, Player, PlayerId } from "@card-game/shared-types";
+import {
+  type Card as CardType,
+  NOSE_COUNTDOWN_TICK_MS,
+  NOSE_COUNTDOWN_WARNING_MS,
+  type PendingNoseCountdown,
+  type Player,
+  type PlayerId,
+} from "@card-game/shared-types";
 
 type NoseCountdownPanelProps = {
   pendingNoseCountdown: PendingNoseCountdown;
@@ -22,15 +29,27 @@ type NoseCountdownPanelProps = {
  * pas ici — ce panneau n'est qu'une aide visuelle + le bouton "nez" en direct.
  */
 export function NoseCountdownPanel({ pendingNoseCountdown, card, players, selfPlayerId, onToggle }: NoseCountdownPanelProps) {
-  const [secondsLeft, setSecondsLeft] = useState(pendingNoseCountdown.seconds);
+  // Deux phases, calquées sur le minuteur serveur (voir scheduleNoseCountdownResolution) :
+  // "attention" (le temps de lire la carte, pas de décompte) puis un chiffre
+  // toutes les NOSE_COUNTDOWN_TICK_MS jusqu'à pendingNoseCountdown.seconds.
+  const [phase, setPhase] = useState<"attention" | "counting">("attention");
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
-    setSecondsLeft(pendingNoseCountdown.seconds);
+    setPhase("attention");
+    setCount(0);
+    const warningTimeout = setTimeout(() => setPhase("counting"), NOSE_COUNTDOWN_WARNING_MS);
+    return () => clearTimeout(warningTimeout);
+  }, [pendingNoseCountdown.cardId]);
+
+  useEffect(() => {
+    if (phase !== "counting") return;
+    setCount(1);
     const interval = setInterval(() => {
-      setSecondsLeft((s) => Math.max(0, s - 1));
-    }, 1000);
+      setCount((c) => Math.min(pendingNoseCountdown.seconds, c + 1));
+    }, NOSE_COUNTDOWN_TICK_MS);
     return () => clearInterval(interval);
-  }, [pendingNoseCountdown.cardId, pendingNoseCountdown.seconds]);
+  }, [phase, pendingNoseCountdown.cardId, pendingNoseCountdown.seconds]);
 
   const selfTouching = selfPlayerId ? (pendingNoseCountdown.touching[selfPlayerId] ?? false) : false;
   const isSelfEligible = Boolean(selfPlayerId && pendingNoseCountdown.eligiblePlayerIds.includes(selfPlayerId));
@@ -47,7 +66,11 @@ export function NoseCountdownPanel({ pendingNoseCountdown, card, players, selfPl
 
       <div className="vote-panel nose-countdown">
         <h2>{card?.name ?? "Décompte"}</h2>
-        <div className="nose-countdown__timer">{secondsLeft}</div>
+        {phase === "attention" ? (
+          <p className="nose-countdown__attention">⚠️ Attention, on va jouer « {card?.name} » — lisez la carte !</p>
+        ) : (
+          <div className="nose-countdown__timer">{count}</div>
+        )}
 
         {isSelfEligible && (
           <button

@@ -492,7 +492,10 @@ describe("Moteur — WIN_IF_ALIVE_COUNT et SKIP_OWN_NEXT_TURNS", () => {
 });
 
 describe("Moteur — vote simultané (carte Cadeaux)", () => {
-  function makeCadeauxCard(onYes: "ELIMINATE" | "LOSE_CARD" | "NOTHING", onNo: "ELIMINATE" | "LOSE_CARD" | "NOTHING") {
+  function makeCadeauxCard(
+    onYes: "ELIMINATE" | "LOSE_CARD" | "GIVE_CARD_TO_ACTOR" | "NOTHING",
+    onNo: "ELIMINATE" | "LOSE_CARD" | "GIVE_CARD_TO_ACTOR" | "NOTHING",
+  ) {
     return makeCard({ id: "cadeaux-1", name: "Cadeaux", effects: [{ type: "START_SIMULTANEOUS_VOTE", onYes, onNo }] });
   }
 
@@ -549,22 +552,40 @@ describe("Moteur — vote simultané (carte Cadeaux)", () => {
     expect(result.state.winnerIds).toEqual(["p1"]);
   });
 
-  it("variante vides : ceux qui répondent 'oui' perdent une carte (défausse commune), personne n'est éliminé", () => {
+  it("variante vides : ceux qui répondent 'oui' donnent une carte à l'auteur de la carte, personne n'est éliminé", () => {
     let state = createInitialState("room-1");
     state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 }).state;
     state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 }).state;
 
-    const cadeaux = makeCadeauxCard("LOSE_CARD", "NOTHING"); // vides: oui → perd une carte
+    const cadeaux = makeCadeauxCard("GIVE_CARD_TO_ACTOR", "NOTHING"); // vides: oui → l'auteur prend une carte
     state = processEvent(state, { type: "GAME_STARTED", timestamp: 3, deck: [cadeaux, ...makeDeck(10)] }).state;
     state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: cadeaux.id, timestamp: 4 }).state;
 
+    const p1HandBefore = state.players.find((p) => p.id === "p1")!.hand.length;
     const p2HandBefore = state.players.find((p) => p.id === "p2")!.hand.length;
     state = processEvent(state, { type: "VOTE_CAST", playerId: "p1", choice: "non", timestamp: 5 }).state;
     const result = processEvent(state, { type: "VOTE_CAST", playerId: "p2", choice: "oui", timestamp: 6 });
 
     expect(result.state.players.every((p) => !p.isEliminated)).toBe(true);
     expect(result.state.players.find((p) => p.id === "p2")!.hand.length).toBe(p2HandBefore - 1);
-    expect(result.state.discardPile.length).toBe(1);
+    expect(result.state.players.find((p) => p.id === "p1")!.hand.length).toBe(p1HandBefore + 1);
+    expect(result.state.discardPile.length).toBe(0);
+  });
+
+  it("variante vides : l'auteur ne se prend pas lui-même de carte s'il répond 'oui' à sa propre carte", () => {
+    let state = createInitialState("room-1");
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p1", playerName: "Alice", timestamp: 1 }).state;
+    state = processEvent(state, { type: "PLAYER_JOINED", playerId: "p2", playerName: "Bob", timestamp: 2 }).state;
+
+    const cadeaux = makeCadeauxCard("GIVE_CARD_TO_ACTOR", "NOTHING");
+    state = processEvent(state, { type: "GAME_STARTED", timestamp: 3, deck: [cadeaux, ...makeDeck(10)] }).state;
+    state = processEvent(state, { type: "CARD_PLAYED", playerId: "p1", cardId: cadeaux.id, timestamp: 4 }).state;
+
+    const p1HandBefore = state.players.find((p) => p.id === "p1")!.hand.length;
+    state = processEvent(state, { type: "VOTE_CAST", playerId: "p1", choice: "oui", timestamp: 5 }).state;
+    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p2", choice: "non", timestamp: 6 });
+
+    expect(result.state.players.find((p) => p.id === "p1")!.hand.length).toBe(p1HandBefore);
   });
 
   it("refuse le vote d'un joueur qui n'est pas éligible", () => {
@@ -1417,6 +1438,27 @@ describe("Moteur — règle persistante (Pioche verrouillée !)", () => {
 
     expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(false);
     expect(result.state.phase).toBe("playing");
+  });
+});
+
+describe("Moteur — règle officielle : main vide après la pioche de son tour = élimination (sans Pioche verrouillée)", () => {
+  it("un joueur avec une main déjà vide dont la pioche est naturellement épuisée (pas verrouillée) est éliminé", () => {
+    let state = createInitialState("room-1");
+    for (const [id, name] of [["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]] as const) {
+      state = processEvent(state, { type: "PLAYER_JOINED", playerId: id, playerName: name, timestamp: 1 }).state;
+    }
+    state = processEvent(state, { type: "GAME_STARTED", timestamp: 2, deck: [] }).state;
+
+    // Simule un tour de p2 avec une main vide et une pioche vide, sans aucune
+    // carte "Pioche verrouillée !" en jeu — la pioche est juste naturellement épuisée.
+    state = updatePlayer(state, "p2", (p) => ({ ...p, hand: [] }));
+    state = { ...state, currentPlayerId: "p2", drawPile: [] };
+
+    const result = processEvent(state, { type: "CARD_DRAWN", playerId: "p2", cardId: "", timestamp: 3 });
+
+    expect(result.state.players.find((p) => p.id === "p2")!.isEliminated).toBe(true);
+    expect(result.sideEffects).toContainEqual({ type: "PLAYER_ELIMINATED", playerId: "p2" });
+    expect(result.state.currentPlayerId).toBe("p3");
   });
 });
 
@@ -2800,7 +2842,30 @@ describe("Moteur — choix au moment du jeu (Vous avez gagné !)", () => {
     expect(result.state.phase).toBe("playing");
   });
 
-  it("claimWin=true + socialVote -> ouvre un vote à majorité des AUTRES joueurs", () => {
+  it("claimWin=true + socialVote, nombre de joueurs PAIR -> l'auteur ne vote pas (reste impair)", () => {
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"], ["p4", "Dan"]]);
+    const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
+    state = startGame(state, [card, ...makeDeck(20)]);
+
+    const result = processEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: "p1",
+      cardId: card.id,
+      claimWin: true,
+      timestamp: 3,
+    });
+
+    expect(result.state.pendingVote).toEqual({
+      mode: "winClaim",
+      cardId: card.id,
+      actorPlayerId: "p1",
+      description: "c'est son anniversaire",
+      eligiblePlayerIds: ["p2", "p3", "p4"],
+      votes: {},
+    });
+  });
+
+  it("claimWin=true + socialVote, nombre de joueurs IMPAIR -> l'auteur vote aussi (reste impair)", () => {
     let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
     const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
     state = startGame(state, [card, ...makeDeck(20)]);
@@ -2818,13 +2883,13 @@ describe("Moteur — choix au moment du jeu (Vous avez gagné !)", () => {
       cardId: card.id,
       actorPlayerId: "p1",
       description: "c'est son anniversaire",
-      eligiblePlayerIds: ["p2", "p3"],
+      eligiblePlayerIds: ["p1", "p2", "p3"],
       votes: {},
     });
   });
 
   it("socialVote : majorité de \"oui\" -> victoire immédiate de l'auteur", () => {
-    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"], ["p4", "Dan"]]);
     const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
     state = startGame(state, [card, ...makeDeck(20)]);
     state = processEvent(state, {
@@ -2835,15 +2900,16 @@ describe("Moteur — choix au moment du jeu (Vous avez gagné !)", () => {
       timestamp: 3,
     }).state;
     state = processEvent(state, { type: "VOTE_CAST", playerId: "p2", choice: "oui", timestamp: 4 }).state;
+    state = processEvent(state, { type: "VOTE_CAST", playerId: "p3", choice: "oui", timestamp: 5 }).state;
 
-    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p3", choice: "oui", timestamp: 5 });
+    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p4", choice: "non", timestamp: 6 });
 
     expect(result.state.phase).toBe("ended");
     expect(result.state.winnerIds).toEqual(["p1"]);
   });
 
   it("socialVote : majorité de \"non\" -> rien ne se passe", () => {
-    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"]]);
+    let state = setupPlayers([["p1", "Alice"], ["p2", "Bob"], ["p3", "Carol"], ["p4", "Dan"]]);
     const card = makeGagneCard({ kind: "socialVote", description: "c'est son anniversaire" });
     state = startGame(state, [card, ...makeDeck(20)]);
     state = processEvent(state, {
@@ -2854,8 +2920,9 @@ describe("Moteur — choix au moment du jeu (Vous avez gagné !)", () => {
       timestamp: 3,
     }).state;
     state = processEvent(state, { type: "VOTE_CAST", playerId: "p2", choice: "non", timestamp: 4 }).state;
+    state = processEvent(state, { type: "VOTE_CAST", playerId: "p3", choice: "non", timestamp: 5 }).state;
 
-    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p3", choice: "non", timestamp: 5 });
+    const result = processEvent(state, { type: "VOTE_CAST", playerId: "p4", choice: "oui", timestamp: 6 });
 
     expect(result.state.phase).toBe("playing");
     expect(result.state.pendingVote).toBeNull();

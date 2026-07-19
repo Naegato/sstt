@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Card as CardType } from "@card-game/shared-types";
 import { useGameStore } from "@/stores/gameStore";
 import { useSocket } from "@/hooks/useSocket";
 import { CardZoomModal } from "./CardZoomModal";
 import { ChoicePanel } from "./ChoicePanel";
 import { DenunciationPanel } from "./DenunciationPanel";
+import { DiscardPileModal } from "./DiscardPileModal";
 import { HandSlapPanel } from "./HandSlapPanel";
 import { NoseCountdownPanel } from "./NoseCountdownPanel";
 import { PlayerHand } from "./PlayerHand";
@@ -45,6 +46,47 @@ export function GameBoard() {
     secondaryLabel?: string;
   } | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
+  // "Pingouins" (STEAL_ON_TURN_START) : rien ne signalait qu'on avait ce
+  // pouvoir en début de tour, retour explicite de l'utilisateur — on
+  // propose maintenant la question ("voulez-vous voler ?"), avec possibilité
+  // d'annuler. `stealChoosing` = en train de choisir une cible/carte à voler ;
+  // `stealDeclined` = a répondu "non merci" (ou annulé) pour ce tour-ci.
+  const [stealChoosing, setStealChoosing] = useState(false);
+  const [stealDeclined, setStealDeclined] = useState(false);
+  const [discardModalOpen, setDiscardModalOpen] = useState(false);
+
+  useEffect(() => {
+    setStealChoosing(false);
+    setStealDeclined(false);
+  }, [gameState?.currentPlayerId]);
+
+  useEffect(() => {
+    if (gameState?.stolenThisTurn) {
+      setStealChoosing(false);
+    }
+  }, [gameState?.stolenThisTurn]);
+
+  // Fin de tour automatique dès qu'on ne peut plus jouer aucune carte ce
+  // tour-ci (GameState.hasPlayedThisTurn) — plus besoin de cliquer "Terminer
+  // mon tour" à chaque fois, demande explicite de l'utilisateur. Ne se
+  // déclenche jamais tant qu'une interaction bloquante est en cours (vote,
+  // choix, décompte, course au clic), pour laisser le temps de la résoudre.
+  useEffect(() => {
+    if (!gameState || !roomId) return;
+    const me = gameState.players.find((p) => p.id === playerId);
+    const noBlockingPending =
+      !gameState.pendingVote && !gameState.pendingChoice && !gameState.pendingNoseCountdown && !gameState.pendingHandSlap;
+    if (
+      gameState.phase === "playing" &&
+      gameState.currentPlayerId === playerId &&
+      me &&
+      !me.isEliminated &&
+      gameState.hasPlayedThisTurn &&
+      noBlockingPending
+    ) {
+      endTurn(roomId, me.id);
+    }
+  }, [gameState, playerId, roomId, endTurn]);
 
   if (!gameState || !roomId) {
     return <p>Connexion à la partie...</p>;
@@ -133,6 +175,13 @@ export function GameBoard() {
       setSelectedCard(null);
       return;
     }
+    // Carte injouable en ce moment (pas mon tour, carte déjà jouée ce
+    // tour-ci...) : on peut quand même zoomer dessus pour la lire, juste sans
+    // pouvoir la jouer — demande explicite de l'utilisateur.
+    if (isCardDisabled(card)) {
+      setCardModal({ card });
+      return;
+    }
     // "Vous avez gagné !" et variantes : choix entre tenter de gagner (vérif
     // auto ou vote selon la condition, voir WIN_IF_CONDITION_ELSE_POINTS côté
     // moteur) et simplement poser pour des points garantis — pas de cible.
@@ -167,7 +216,12 @@ export function GameBoard() {
     !self?.isEliminated &&
     !gameState.stolenThisTurn &&
     Boolean(self?.playedCards.some((c) => c.effects.some((e) => e.type === "STEAL_ON_TURN_START")));
-  const stealableFromPlayerIds = canSteal ? gameState.players.filter((p) => p.id !== playerId).map((p) => p.id) : [];
+  // N'illumine les adversaires comme cibles de vol qu'après avoir répondu
+  // "oui" au prompt ci-dessous (pas juste parce que canSteal est vrai) — sinon
+  // ça se rallume automatiquement à chaque tour sans qu'on ait rien demandé.
+  const stealableFromPlayerIds =
+    canSteal && stealChoosing ? gameState.players.filter((p) => p.id !== playerId).map((p) => p.id) : [];
+  const showStealPrompt = canSteal && !stealChoosing && !stealDeclined;
 
   // Confirmation d'une carte manuelle (texte affiché, pas d'automatisation) :
   // ne concerne que la toute dernière carte jouée par soi-même dans la partie
@@ -217,12 +271,43 @@ export function GameBoard() {
         </div>
       )}
 
+      {showStealPrompt && (
+        <div className="steal-prompt">
+          <p>🐧 Pingouins ! Voulez-vous voler une carte posée chez un adversaire ce tour-ci ?</p>
+          <div className="steal-prompt__actions">
+            <button type="button" className="btn-sticker" onClick={() => setStealChoosing(true)}>
+              Voler une carte
+            </button>
+            <button type="button" className="btn-sticker btn-sticker--zone" onClick={() => setStealDeclined(true)}>
+              Non merci
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stealChoosing && (
+        <div className="steal-prompt">
+          <p>Clique un adversaire (illuminé), puis choisis la carte à lui voler.</p>
+          <button
+            type="button"
+            className="btn-sticker btn-sticker--zone"
+            onClick={() => {
+              setStealChoosing(false);
+              setStealDeclined(true);
+            }}
+          >
+            Annuler le vol
+          </button>
+        </div>
+      )}
+
       <div className="table">
         <div className="table__surface">
           <TurnIndicator
             players={gameState.players}
             currentPlayerId={gameState.currentPlayerId}
             selfPlayerId={playerId}
+            pointsToWin={gameState.pointsToWin}
             stealableFromPlayerIds={stealableFromPlayerIds}
             onSteal={(targetPlayerId, cardId) => self && stealPlayedCard(roomId, self.id, targetPlayerId, cardId)}
             onZoomCard={(card) => setCardModal({ card })}
@@ -250,7 +335,11 @@ export function GameBoard() {
                 </p>
               )}
 
-              <div className="pile pile--discard">
+              <button
+                type="button"
+                className="pile pile--discard pile--clickable"
+                onClick={() => setDiscardModalOpen(true)}
+              >
                 <div className="pile__stack">
                   <div className="layer" />
                   <div className="layer" />
@@ -261,7 +350,7 @@ export function GameBoard() {
                   </div>
                 </div>
                 <p className="pile__label">Défausse · {gameState.discardPile.length}</p>
-              </div>
+              </button>
             </div>
           )}
 
@@ -286,11 +375,6 @@ export function GameBoard() {
                 isTargeting={isTargeting}
                 onSelectCard={handleCardClick}
               />
-              {isMyTurn && !self.isEliminated && (
-                <button type="button" className="btn-sticker" onClick={() => endTurn(roomId, self.id)}>
-                  Terminer mon tour
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -303,6 +387,12 @@ export function GameBoard() {
         confirmLabel={cardModal?.confirmLabel ?? "Jouer cette carte"}
         onSecondary={cardModal?.secondaryAction}
         secondaryLabel={cardModal?.secondaryLabel}
+      />
+
+      <DiscardPileModal
+        open={discardModalOpen}
+        cards={gameState.discardPile}
+        onClose={() => setDiscardModalOpen(false)}
       />
 
       {gameState.phase === "playing" && gameState.pendingVote && (
@@ -319,6 +409,9 @@ export function GameBoard() {
       {gameState.phase === "playing" && gameState.pendingChoice && (
         <ChoicePanel
           pendingChoice={gameState.pendingChoice}
+          card={gameState.players
+            .flatMap((p) => p.playedCards)
+            .find((c) => c.id === gameState.pendingChoice!.cardId)}
           selfPlayerId={playerId}
           onChoose={(value) => self && submitChoice(roomId, self.id, value)}
         />

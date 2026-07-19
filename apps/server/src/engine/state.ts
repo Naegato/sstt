@@ -477,30 +477,54 @@ export function moveFirstHandCardToDiscard(state: GameState, playerId: PlayerId)
 }
 
 /**
+ * Retire la première carte de la main de `fromPlayerId` et la donne à
+ * `toPlayerId` (si `fromPlayerId` a une main non vide, sinon rien ne se
+ * passe) — ex: "Cadeaux" vides ("Prenez une carte à chaque joueur qui a
+ * répondu oui"), la carte prise rejoint la main de l'auteur, PAS la défausse.
+ */
+export function moveFirstHandCardToPlayer(state: GameState, fromPlayerId: PlayerId, toPlayerId: PlayerId): GameState {
+  const fromPlayer = state.players.find((p) => p.id === fromPlayerId);
+  const card = fromPlayer?.hand[0];
+  if (!fromPlayer || !card) {
+    return state;
+  }
+  let next = updatePlayer(state, fromPlayerId, (p) => ({ ...p, hand: p.hand.slice(1) }));
+  next = updatePlayer(next, toPlayerId, (p) => ({ ...p, hand: [...p.hand, card] }));
+  return next;
+}
+
+/**
  * Ouvre un vote simultané oui/non pour tous les joueurs actuellement en jeu.
  * Bloque la fin de tour tant qu'il n'est pas résolu (voir index.ts / TURN_ENDED).
  */
 export function startSimultaneousVote(
   state: GameState,
   cardId: string,
+  actorPlayerId: PlayerId,
   onYes: VoteOutcome,
   onNo: VoteOutcome,
 ): GameState {
   const eligiblePlayerIds = state.players.filter((p) => !p.isEliminated).map((p) => p.id);
   return {
     ...state,
-    pendingVote: { mode: "simultaneous", cardId, eligiblePlayerIds, votes: {}, onYes, onNo },
+    pendingVote: { mode: "simultaneous", cardId, actorPlayerId, eligiblePlayerIds, votes: {}, onYes, onNo },
   };
 }
 
 /**
  * Ouvre le vote à majorité "winClaim" ("Vous avez gagné !", condition non
- * vérifiable par le serveur) : tous les joueurs en jeu SAUF l'auteur de la
- * carte votent, même principe que "Gâteau ou Tombeau" (voir résolution dans `castVote`).
+ * vérifiable par le serveur) : l'auteur de la carte vote ou non selon la
+ * parité du nombre de joueurs en jeu, pour garantir un nombre de votants
+ * TOUJOURS impair (pas de risque d'égalité stricte, demande explicite de
+ * l'utilisateur) — nombre pair de joueurs -> l'auteur ne vote pas (comme
+ * "Gâteau ou Tombeau", reste impair) ; nombre impair -> l'exclure laisserait
+ * un nombre pair de votants, donc il vote aussi (comme "La mort ou Tchi-tchi").
  */
 export function startWinClaimVote(state: GameState, cardId: CardId, actorPlayerId: PlayerId, description: string): GameState {
-  const eligiblePlayerIds = state.players
-    .filter((p) => !p.isEliminated && p.id !== actorPlayerId)
+  const alivePlayers = state.players.filter((p) => !p.isEliminated);
+  const includeActor = alivePlayers.length % 2 === 1;
+  const eligiblePlayerIds = alivePlayers
+    .filter((p) => includeActor || p.id !== actorPlayerId)
     .map((p) => p.id);
   return {
     ...state,
@@ -819,6 +843,9 @@ export function castVote(state: GameState, playerId: PlayerId, choice: VoteChoic
       } else if (outcome === "LOSE_CARD") {
         next = moveFirstHandCardToDiscard(next, id);
         sideEffects.push({ type: "CARD_LOST_TO_DISCARD", playerId: id });
+      } else if (outcome === "GIVE_CARD_TO_ACTOR" && id !== pendingVote.actorPlayerId) {
+        next = moveFirstHandCardToPlayer(next, id, pendingVote.actorPlayerId);
+        sideEffects.push({ type: "CARDS_GIVEN", playerId: pendingVote.actorPlayerId, count: 1 });
       }
     }
     if (toEliminate.length > 0) {

@@ -12,7 +12,7 @@ export type CardRarity = "normale" | "etoile" | "chaos" | "vierge";
 export type VoteChoice = "oui" | "non";
 
 /** Ce qui arrive à un joueur selon son vote, une fois le vote simultané révélé. */
-export type VoteOutcome = "ELIMINATE" | "LOSE_CARD" | "NOTHING";
+export type VoteOutcome = "ELIMINATE" | "LOSE_CARD" | "GIVE_CARD_TO_ACTOR" | "NOTHING";
 
 /**
  * Effets mécaniques que le moteur pur sait résoudre automatiquement.
@@ -326,6 +326,8 @@ export type PendingVote =
   | {
       mode: "simultaneous";
       cardId: CardId;
+      /** Auteur de la carte — cible de l'outcome `GIVE_CARD_TO_ACTOR` (ex: "Cadeaux" vides). */
+      actorPlayerId: PlayerId;
       eligiblePlayerIds: PlayerId[];
       votes: Partial<Record<PlayerId, VoteChoice>>;
       onYes: VoteOutcome;

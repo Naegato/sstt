@@ -354,7 +354,10 @@ button {
   flex-direction: column;
   gap: 0.35rem;
   width: 150px;
-  min-height: 200px;
+  /* Taille fixe (pas min-height) : une vraie carte a un format fixe, le texte
+     est tronqué (voir .card__text) plutôt que de faire grandir la carte —
+     clic dessus pour la lire en entier dans le zoom. */
+  height: 200px;
   background: var(--paper);
   color: var(--ink);
   border: 4px solid var(--ink);
@@ -375,15 +378,21 @@ button {
   z-index: 5;
 }
 
-.card:disabled {
+.card:disabled,
+.card--unplayable {
   /* Pas d'opacity ici : les cartes de la main se chevauchent (margin négatif,
      voir .player-hand__cards .card) et une opacity <1 sur des éléments opaques
      empilés fait apparaître une teinte parasite dans les zones de chevauchement
      (chaque carte devient translucide et laisse transparaître celle du dessous).
      filter reste opaque, donc pas de mélange de couleurs entre cartes voisines. */
   filter: saturate(0.35) brightness(0.72);
+}
+
+.card:disabled {
   cursor: not-allowed;
 }
+
+/* .card--unplayable reste cliquable (zoom en lecture seule) : curseur normal, pas "not-allowed". */
 
 .card--etoile {
   border-color: var(--accent-gold-ink);
@@ -422,6 +431,13 @@ button {
   font-size: 0.72rem;
   line-height: 1.32;
   color: #4a4358;
+  /* Tronqué à la taille réelle de la carte (voir .card, height fixe) — le
+     texte complet reste consultable via le zoom (clic sur la carte). */
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 7;
+  -webkit-box-orient: vertical;
 }
 
 .card--selected {
@@ -533,6 +549,22 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 0.4rem;
+}
+
+.pile--clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pile--clickable:hover .pile__stack {
+  transform: translateY(-3px);
+}
+
+.pile__stack {
+  transition: transform 0.15s ease;
 }
 
 .pile__stack {
@@ -701,6 +733,71 @@ button {
   .player-card--targetable {
     animation: none;
   }
+}
+
+/* Cible de vol possible ("Pingouins", voir GameBoard.stealChoosing) — même
+   principe visuel que .player-card--targetable mais teinte dorée pour ne pas
+   se confondre avec le ciblage normal d'une carte en main. */
+.player-card--stealable {
+  border-color: var(--accent-gold);
+  animation: zone-pulse-gold 1.1s ease-in-out infinite;
+}
+
+@keyframes zone-pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(255, 201, 74, 0.3), 0 0 18px rgba(255, 201, 74, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(255, 201, 74, 0.6), 0 0 34px rgba(255, 201, 74, 0.65);
+  }
+}
+
+.player-card--stealable::after {
+  content: "Voler ici";
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.6rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.65rem;
+  color: var(--accent-gold-ink);
+  background: var(--accent-gold);
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-card--stealable {
+    animation: none;
+  }
+}
+
+/* ---------- Prompt "Pingouins" (voler une carte ?) ---------- */
+
+.steal-prompt {
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid var(--accent-gold-ink);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.5);
+}
+
+.steal-prompt p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.steal-prompt__actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .player-card__skull {
@@ -962,6 +1059,57 @@ button {
   }
 }
 
+/* ---------- Mobile : plateau des joueurs + pioche/défausse compacts ---------- */
+
+@media (max-width: 640px) {
+  /* En dessous de 640px, minmax(210px, 1fr) ne laisse plus qu'une seule
+     colonne (liste verticale, pas une grille) — on force 2 colonnes plus
+     petites plutôt qu'une liste, demande explicite de l'utilisateur. */
+  .players-board {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .player-card {
+    padding: 0.55rem;
+  }
+
+  .player-card h3 {
+    font-size: 0.8rem;
+  }
+
+  .player-card__avatar {
+    width: 1.6rem;
+    height: 1.6rem;
+    font-size: 0.8rem;
+  }
+
+  .player-card__meta,
+  .player-card__hand-count {
+    font-size: 0.62rem;
+  }
+
+  .player-card__hint {
+    font-size: 0.56rem;
+  }
+
+  /* Pioche/défausse en une seule ligne compacte, peu importe le tour. */
+  .center-strip {
+    gap: 1rem;
+    flex-wrap: nowrap;
+    margin: 1rem 0;
+  }
+
+  .pile__stack {
+    width: 3rem;
+    height: 4.2rem;
+  }
+
+  .pile__label {
+    font-size: 0.6rem;
+  }
+}
+
 /* ---------- Board-level feedback ---------- */
 
 .game-board__lobby {
@@ -1212,6 +1360,12 @@ button {
   align-items: center;
   gap: 0.75rem;
   text-align: center;
+}
+
+.nose-countdown__attention {
+  font-weight: 800;
+  color: var(--accent-hot-ink);
+  font-size: 1.05rem;
 }
 
 .nose-countdown__timer {

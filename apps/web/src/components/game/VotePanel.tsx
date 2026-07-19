@@ -28,7 +28,10 @@ export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePa
 
   const actorPlayerId =
     pendingVote.mode === "cakeOrGrave" || pendingVote.mode === "winClaim" ? pendingVote.actorPlayerId : null;
-  if (actorPlayerId && selfPlayerId === actorPlayerId) {
+  // "winClaim" inclut parfois l'auteur dans les votants (parité impaire, voir
+  // startWinClaimVote) — dans ce cas il vote comme tout le monde, pas de retour anticipé.
+  const actorExcluded = actorPlayerId ? !pendingVote.eligiblePlayerIds.includes(actorPlayerId) : false;
+  if (actorPlayerId && selfPlayerId === actorPlayerId && actorExcluded) {
     return (
       <div className="vote-panel">
         <h2>Vote en cours : {labels.title}</h2>
@@ -55,6 +58,7 @@ export function VotePanel({ pendingVote, selfPlayerId, players, onVote }: VotePa
       {pendingVote.mode === "winClaim" && (
         <p>
           {nameOf(pendingVote.actorPlayerId)} prétend que : « {pendingVote.description} »
+          {selfPlayerId === pendingVote.actorPlayerId && " — nombre de joueurs impair, tu votes aussi."}
         </p>
       )}
       <p>

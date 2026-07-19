@@ -11,7 +11,6 @@ import {
   createInitialState,
   drawCards,
   eliminatePlayer,
-  isDrawPileLocked,
   passHotPotato,
   resetGameToLobby,
   resolveNoseCountdown,
@@ -170,13 +169,14 @@ function dispatch(state: GameState, event: GameEvent): EngineResult {
 
 /**
  * Pioche de début de tour (event CARD_DRAWN, toujours émis par le service pour
- * le joueur actuellement courant — voir GameService.drawForCurrentPlayer). Si
- * "Pioche verrouillée !" est en jeu (LOCK_DRAW_PILE), la pioche ne ramène jamais
- * rien : un joueur qui se retrouve alors avec une main vide n'a rien à jouer à
- * son tour et est immédiatement éliminé (règle officielle). On avance ensuite
- * au joueur suivant et on retente pour lui — boucle bornée : chaque itération
- * qui ne s'arrête pas élimine un joueur de plus, et la partie se termine dès
- * qu'il n'en reste plus qu'un (voir eliminatePlayer).
+ * le joueur actuellement courant — voir GameService.drawForCurrentPlayer). Règle
+ * officielle : un joueur qui ne peut jouer aucune carte à son tour est éliminé
+ * immédiatement — un joueur qui se retrouve avec une main vide après la pioche
+ * de son tour (pioche verrouillée par "Pioche verrouillée !", pioche naturellement
+ * épuisée, ou toute autre raison) n'a par définition plus rien à jouer. On avance
+ * ensuite au joueur suivant et on retente pour lui — boucle bornée : chaque
+ * itération qui ne s'arrête pas élimine un joueur de plus, et la partie se
+ * termine dès qu'il n'en reste plus qu'un (voir eliminatePlayer).
  */
 function drawAtTurnStart(state: GameState, playerId: string): EngineResult {
   const sideEffects: SideEffect[] = [];
@@ -189,7 +189,7 @@ function drawAtTurnStart(state: GameState, playerId: string): EngineResult {
     sideEffects.push(...drawResult.sideEffects);
 
     const player = next.players.find((p) => p.id === currentTargetId);
-    if (!player || player.hand.length > 0 || !isDrawPileLocked(next)) {
+    if (!player || player.hand.length > 0) {
       break;
     }
 

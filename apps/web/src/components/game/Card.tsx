@@ -18,12 +18,24 @@ const rarityLabel: Record<CardType["rarity"], string> = {
 };
 
 export function Card({ card, disabled, selected, dimmed, onPlay }: CardProps) {
+  // `disabled` reste purement visuel (voir .card:disabled dans globals.css) : le
+  // bouton n'est jamais nativement désactivé, sinon impossible de zoomer/lire
+  // une carte de sa main quand ce n'est pas son tour — onPlay est appelé dans
+  // tous les cas, à charge de l'appelant (voir GameBoard.handleCardClick) de
+  // proposer un aperçu en lecture seule plutôt qu'une confirmation de jeu.
   return (
     <button
       type="button"
-      disabled={disabled || !onPlay}
+      disabled={!onPlay}
+      aria-disabled={disabled}
       onClick={() => onPlay?.(card)}
-      className={["card", `card--${card.rarity}`, selected ? "card--selected" : "", dimmed ? "card--dimmed" : ""]
+      className={[
+        "card",
+        `card--${card.rarity}`,
+        disabled ? "card--unplayable" : "",
+        selected ? "card--selected" : "",
+        dimmed ? "card--dimmed" : "",
+      ]
         .filter(Boolean)
         .join(" ")}
     >

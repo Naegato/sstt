@@ -1,4 +1,11 @@
-import type { CardId, GameEvent, PlayerId, RoomId } from "@card-game/shared-types";
+import {
+  type CardId,
+  type GameEvent,
+  NOSE_COUNTDOWN_TICK_MS,
+  NOSE_COUNTDOWN_WARNING_MS,
+  type PlayerId,
+  type RoomId,
+} from "@card-game/shared-types";
 import { type EngineResult, processEvent } from "../engine/index.js";
 import { loadPlayableDeck } from "../content/cards-catalog.js";
 import { buildBalancedDeck, shuffleWith } from "../content/deck-builder.js";
@@ -169,21 +176,27 @@ export class GameService {
   }
 
   /**
-   * Programme la résolution automatique de "Nez à nez"/"Pied de nez" après
-   * `seconds` secondes — le moteur pur ne connaît jamais l'horloge, donc ce
-   * minuteur vit ici. Vérifie que le décompte en cours est toujours bien celui
-   * qui l'a programmé (via `cardId`) avant de résoudre, pour ignorer un
-   * minuteur devenu obsolète (ex: partie réinitialisée entretemps).
+   * Programme la résolution automatique de "Nez à nez"/"Pied de nez" — le
+   * moteur pur ne connaît jamais l'horloge, donc ce minuteur vit ici. Délai
+   * total = phase "attention" (temps de lire la carte) + un chiffre toutes les
+   * `NOSE_COUNTDOWN_TICK_MS` jusqu'à `seconds` (voir constantes partagées,
+   * NoseCountdownPanel reproduit le même minutage côté client pour rester
+   * synchronisé). Vérifie que le décompte en cours est toujours bien celui qui
+   * l'a programmé (via `cardId`) avant de résoudre, pour ignorer un minuteur
+   * devenu obsolète (ex: partie réinitialisée entretemps).
    */
   private scheduleNoseCountdownResolution(roomId: RoomId, cardId: CardId, seconds: number): void {
-    setTimeout(() => {
-      const room = this.roomManager.getRoom(roomId);
-      if (!room || room.state.pendingNoseCountdown?.cardId !== cardId) {
-        return;
-      }
-      const result = this.handleEvent(roomId, { type: "NOSE_COUNTDOWN_RESOLVED", timestamp: Date.now() });
-      this.onSpontaneousUpdate?.(roomId, result);
-    }, seconds * 1000);
+    setTimeout(
+      () => {
+        const room = this.roomManager.getRoom(roomId);
+        if (!room || room.state.pendingNoseCountdown?.cardId !== cardId) {
+          return;
+        }
+        const result = this.handleEvent(roomId, { type: "NOSE_COUNTDOWN_RESOLVED", timestamp: Date.now() });
+        this.onSpontaneousUpdate?.(roomId, result);
+      },
+      NOSE_COUNTDOWN_WARNING_MS + seconds * NOSE_COUNTDOWN_TICK_MS,
+    );
   }
 
   private drawForCurrentPlayer(roomId: RoomId, result: EngineResult): EngineResult {

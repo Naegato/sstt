@@ -8,6 +8,8 @@ type TurnIndicatorProps = {
   players: Player[];
   currentPlayerId: PlayerId | null;
   selfPlayerId: PlayerId | null;
+  /** Score à atteindre pour gagner par points (GameState.pointsToWin, modifiable par "Super Points") — affiché à côté du score de chacun. */
+  pointsToWin: number;
   /** Joueurs dont on peut voler une carte en ce moment (voir "Pingouins" dans GameBoard). */
   stealableFromPlayerIds?: PlayerId[];
   onSteal?: (targetPlayerId: PlayerId, cardId: string) => void;
@@ -24,6 +26,7 @@ export function TurnIndicator({
   players,
   currentPlayerId,
   selfPlayerId,
+  pointsToWin,
   stealableFromPlayerIds = [],
   onSteal,
   onZoomCard,
@@ -43,6 +46,7 @@ export function TurnIndicator({
         const isExpanded = expandedPlayerId === player.id;
         const overflowCount = Math.max(0, player.playedCards.length - MAX_CHIPS);
         const isTargetable = targetablePlayerIds.includes(player.id);
+        const isStealTarget = stealableFromPlayerIds.includes(player.id);
 
         // En mode ciblage, cliquer une zone illuminée pose la carte sélectionnée
         // au lieu de simplement déplier/replier le peek.
@@ -63,6 +67,7 @@ export function TurnIndicator({
               player.isEliminated ? "player-card--eliminated" : "",
               isExpanded ? "player-card--expanded" : "",
               isTargetable ? "player-card--targetable" : "",
+              isStealTarget ? "player-card--stealable" : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -87,7 +92,7 @@ export function TurnIndicator({
                   {isSelf ? " (moi)" : ""}
                 </h3>
                 <p className="player-card__meta">
-                  {player.isEliminated ? "Éliminé" : `${player.points} pt`}
+                  {player.isEliminated ? "Éliminé" : `${player.points} / ${pointsToWin} pt`}
                   {isCurrent && !player.isEliminated ? " · à son tour" : ""}
                 </p>
               </div>

@@ -118,7 +118,7 @@ describe("loadPlayableDeck", () => {
     const chatons = cadeaux.find((c) => c.text.includes("chatons"));
     const serpents = cadeaux.find((c) => c.text.includes("serpents"));
 
-    expect(vides?.effects).toEqual([{ type: "START_SIMULTANEOUS_VOTE", onYes: "LOSE_CARD", onNo: "NOTHING" }]);
+    expect(vides?.effects).toEqual([{ type: "START_SIMULTANEOUS_VOTE", onYes: "GIVE_CARD_TO_ACTOR", onNo: "NOTHING" }]);
     expect(chatons?.effects).toEqual([{ type: "START_SIMULTANEOUS_VOTE", onYes: "NOTHING", onNo: "ELIMINATE" }]);
     expect(serpents?.effects).toEqual([{ type: "START_SIMULTANEOUS_VOTE", onYes: "ELIMINATE", onNo: "NOTHING" }]);
   });
@@ -273,8 +273,8 @@ describe("loadPlayableDeck", () => {
     const deck = await loadPlayableDeck();
     const nezANez = deck.find((c) => c.name === "Nez à nez");
     const piedDeNez = deck.find((c) => c.name === "Pied de nez");
-    expect(nezANez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 2, eliminateIfTouching: false }]);
-    expect(piedDeNez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 2, eliminateIfTouching: true }]);
+    expect(nezANez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }]);
+    expect(piedDeNez?.effects).toEqual([{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }]);
   });
 
   it("branche START_HAND_SLAP sur les 3 variantes de \"Du chocolat !\"", async () => {

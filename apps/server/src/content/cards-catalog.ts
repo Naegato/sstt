@@ -93,13 +93,6 @@ function idFromRow(row: CatalogRow): string {
  * - Dragon/Laser/Trou noir/Pluie de flèches : élimination différée (fin de tour du porteur).
  * - Bouclier/Science/Vaisseau spatial/Supervitesse : redirigent la menace correspondante, sinon piochent 2.
  */
-/**
- * Durée du décompte synchronisé de "Nez à nez"/"Pied de nez" (voir plus bas).
- * Volontairement courte (retour utilisateur : "des secondes pour de vrai"
- * rendait le rythme trop lent) — un seul endroit à modifier pour équilibrer.
- */
-const NOSE_COUNTDOWN_SECONDS = 2;
-
 const DANGER_CARD: Card["effects"] = [
   { type: "PLACE_IN_FRONT_OF_TARGET" },
   { type: "ELIMINATE_AT_END_OF_TURN_IF_PRESENT" },
@@ -224,8 +217,11 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
   // state.ts. "Nez à nez" élimine ceux qui NE touchent PAS leur nez au compte
   // 3 ; "Pied de nez" élimine ceux qui touchent ENCORE leur nez au compte 4,
   // porteur inclus (le texte dit "tout joueur", pas "tout autre joueur").
-  "Nez à nez": [{ type: "START_NOSE_COUNTDOWN", seconds: NOSE_COUNTDOWN_SECONDS, eliminateIfTouching: false }],
-  "Pied de nez": [{ type: "START_NOSE_COUNTDOWN", seconds: NOSE_COUNTDOWN_SECONDS, eliminateIfTouching: true }],
+  // `seconds` = le vrai chiffre du compte de la carte (PAS des secondes réelles) —
+  // le rythme (délai d'attention + durée entre chaque chiffre) se règle via
+  // NOSE_COUNTDOWN_WARNING_MS/NOSE_COUNTDOWN_TICK_MS (shared-types/constants.ts).
+  "Nez à nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 3, eliminateIfTouching: false }],
+  "Pied de nez": [{ type: "START_NOSE_COUNTDOWN", seconds: 4, eliminateIfTouching: true }],
 };
 
 /**
@@ -235,7 +231,9 @@ const AUTOMATED_EFFECTS: Record<string, Card["effects"]> = {
  */
 function resolveCadeauxEffects(description: string): Card["effects"] {
   if (description.includes("vides")) {
-    return [{ type: "START_SIMULTANEOUS_VOTE", onYes: "LOSE_CARD", onNo: "NOTHING" }];
+    // "Prenez une carte à chaque joueur qui a répondu oui" : la carte prise
+    // rejoint la main de l'auteur (GIVE_CARD_TO_ACTOR), pas la défausse commune.
+    return [{ type: "START_SIMULTANEOUS_VOTE", onYes: "GIVE_CARD_TO_ACTOR", onNo: "NOTHING" }];
   }
   if (description.includes("chatons")) {
     return [{ type: "START_SIMULTANEOUS_VOTE", onYes: "NOTHING", onNo: "ELIMINATE" }];
